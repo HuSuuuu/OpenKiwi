@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">OpenKiwi</string>
+    <string name="accessibility_service_label">OpenKiwi 智能操控服务</string>
+    <string name="accessibility_service_description">OpenKiwi 使用无障碍服务来理解和操控屏幕，实现自动点击、滑动、输入等 GUI 操作。此服务不会收集您的个人数据。</string>
+    <string name="notification_listener_description">OpenKiwi monitors notifications to help the AI agent understand and respond to incoming information.</string>
+</resources>

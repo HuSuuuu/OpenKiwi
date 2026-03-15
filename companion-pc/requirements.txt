@@ -1,0 +1,5 @@
+PyQt6>=6.5
+websockets>=12.0
+aiohttp>=3.9
+pyserial>=3.5
+qasync>=0.27

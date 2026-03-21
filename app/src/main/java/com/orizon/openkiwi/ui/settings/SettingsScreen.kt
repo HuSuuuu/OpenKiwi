@@ -4,19 +4,25 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import android.util.Log
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -109,6 +115,10 @@ fun SettingsScreen(
         ) {
             PermissionSettingsSection()
 
+            VoiceWakeSettingsSection()
+
+            ClipboardMonitorSettingsSection()
+
             SettingsSection(title = "模型") {
                 SettingsItem(
                     icon = Icons.Outlined.AutoAwesome,
@@ -125,6 +135,135 @@ fun SettingsScreen(
                 )
             }
 
+            SettingsSection(title = "外观") {
+                // Font picker
+                var currentFont by remember { mutableStateOf("default") }
+                LaunchedEffect(Unit) { prefs.fontFamily.collect { currentFont = it } }
+                var fontExpanded by remember { mutableStateOf(false) }
+
+                Box {
+                    SettingsItem(
+                        icon = Icons.Outlined.TextFields,
+                        title = "字体",
+                        subtitle = com.orizon.openkiwi.ui.theme.AppFonts.labels[currentFont] ?: "默认",
+                        onClick = { fontExpanded = true }
+                    )
+                    DropdownMenu(expanded = fontExpanded, onDismissRequest = { fontExpanded = false }) {
+                        com.orizon.openkiwi.ui.theme.AppFonts.labels.forEach { (key, label) ->
+                            DropdownMenuItem(
+                                text = {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            label,
+                                            fontFamily = com.orizon.openkiwi.ui.theme.AppFonts.fromKey(key)
+                                        )
+                                        if (key == currentFont) {
+                                            Spacer(Modifier.width(8.dp))
+                                            Icon(Icons.Default.CheckCircle, null,
+                                                modifier = Modifier.size(16.dp),
+                                                tint = MaterialTheme.colorScheme.primary)
+                                        }
+                                    }
+                                },
+                                onClick = {
+                                    currentFont = key
+                                    scope.launch { prefs.setFontFamily(key) }
+                                    fontExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+
+                // Accent color picker
+                var currentAccent by remember { mutableStateOf("green") }
+                LaunchedEffect(Unit) { prefs.accentColor.collect { currentAccent = it } }
+
+                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Outlined.Palette, null,
+                            modifier = Modifier.size(22.dp),
+                            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
+                        Spacer(Modifier.width(16.dp))
+                        Text("配色", style = MaterialTheme.typography.bodyLarge)
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        com.orizon.openkiwi.ui.theme.AccentColors.all.forEach { (key, color) ->
+                            val selected = key == currentAccent
+                            Surface(
+                                onClick = {
+                                    currentAccent = key
+                                    scope.launch { prefs.setAccentColor(key) }
+                                },
+                                shape = CircleShape,
+                                color = color,
+                                border = if (selected) BorderStroke(2.5.dp, MaterialTheme.colorScheme.onSurface)
+                                else BorderStroke(1.dp, color.copy(alpha = 0.3f)),
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                if (selected) {
+                                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                        Icon(Icons.Default.Check, null,
+                                            modifier = Modifier.size(16.dp),
+                                            tint = Color.White)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        com.orizon.openkiwi.ui.theme.AccentColors.labels[currentAccent] ?: "",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                    )
+                }
+
+                // Language picker
+                var currentLang by remember { mutableStateOf("zh") }
+                LaunchedEffect(Unit) {
+                    val saved = prefs.getString("app_language")
+                    if (saved.isNotBlank()) currentLang = saved
+                }
+                var langExpanded by remember { mutableStateOf(false) }
+                val languages = listOf("zh" to "中文", "en" to "English")
+
+                Box {
+                    SettingsItem(
+                        icon = Icons.Outlined.Language,
+                        title = "语言 / Language",
+                        subtitle = languages.firstOrNull { it.first == currentLang }?.second ?: "中文",
+                        onClick = { langExpanded = true }
+                    )
+                    DropdownMenu(expanded = langExpanded, onDismissRequest = { langExpanded = false }) {
+                        languages.forEach { (key, label) ->
+                            DropdownMenuItem(
+                                text = {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(label)
+                                        if (key == currentLang) {
+                                            Spacer(Modifier.width(8.dp))
+                                            Icon(Icons.Default.CheckCircle, null,
+                                                modifier = Modifier.size(16.dp),
+                                                tint = MaterialTheme.colorScheme.primary)
+                                        }
+                                    }
+                                },
+                                onClick = {
+                                    currentLang = key
+                                    scope.launch { prefs.setString("app_language", key) }
+                                    langExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+
             SettingsSection(title = "智能体") {
                 SettingsSliderItem(
                     icon = Icons.Outlined.Memory,
@@ -135,6 +274,50 @@ fun SettingsScreen(
                     steps = 18,
                     onValueChange = { maxContextMessages = it.toInt(); scope.launch { prefs.setMaxContextMessages(it.toInt()) } }
                 )
+            }
+
+            SettingsSection(title = "寄生模式") {
+                var parasiticEnabled by remember {
+                    mutableStateOf(com.orizon.openkiwi.core.agent.ParasiticQueryTool.enabled)
+                }
+                val hostApps = com.orizon.openkiwi.core.agent.ParasiticQueryTool.SUPPORTED_HOSTS
+                var selectedHost by remember {
+                    mutableStateOf("豆包")
+                }
+
+                SettingsSwitchItem(
+                    icon = Icons.Outlined.Adb,
+                    title = "启用寄生模式",
+                    subtitle = if (parasiticEnabled) "通过 $selectedHost App 获取 AI 回复（无需 API Key）"
+                    else "自动操作其他 AI App 来获取回复",
+                    checked = parasiticEnabled,
+                    onCheckedChange = {
+                        parasiticEnabled = it
+                        com.orizon.openkiwi.core.agent.ParasiticQueryTool.enabled = it
+                    }
+                )
+
+                if (parasiticEnabled) {
+                    var expanded by remember { mutableStateOf(false) }
+                    SettingsItem(
+                        icon = Icons.Outlined.Apps,
+                        title = "宿主应用",
+                        subtitle = selectedHost,
+                        onClick = { expanded = true }
+                    )
+                    DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                        hostApps.forEach { (name, config) ->
+                            DropdownMenuItem(
+                                text = { Text("${config.displayName} (${config.packageName})") },
+                                onClick = {
+                                    selectedHost = name
+                                    com.orizon.openkiwi.core.agent.ParasiticQueryTool.enabled = true
+                                    expanded = false
+                                }
+                            )
+                        }
+                    }
+                }
             }
 
             SettingsSection(title = "安全") {
@@ -184,6 +367,8 @@ fun SettingsScreen(
                     }
                 }
             }
+
+            RagSettingsSection()
 
             FeishuSettingsSection()
 
@@ -382,6 +567,79 @@ private fun SettingsRadioGroup(
             }
         }
         Spacer(Modifier.height(8.dp))
+    }
+}
+
+@Composable
+private fun VoiceWakeSettingsSection() {
+    val prefs = com.orizon.openkiwi.OpenKiwiApp.instance.container.userPreferences
+    val scope = rememberCoroutineScope()
+    var enabled by remember { mutableStateOf(false) }
+    var wakeWord by remember { mutableStateOf("hey kiwi") }
+    val listening by com.orizon.openkiwi.OpenKiwiApp.instance.container.continuousListener.isListening.collectAsState(initial = false)
+
+    LaunchedEffect(Unit) {
+        prefs.voiceWakeEnabled.collect { enabled = it }
+    }
+    LaunchedEffect(Unit) {
+        prefs.voiceWakeWord.collect { wakeWord = it }
+    }
+
+    SettingsSection(title = "语音唤醒") {
+        SettingsSwitchItem(
+            icon = Icons.Outlined.Mic,
+            title = "持续聆听 + 唤醒词",
+            subtitle = "说出唤醒词后继续说指令，将自动发送到当前对话。需麦克风权限。",
+            checked = enabled,
+            onCheckedChange = { on ->
+                scope.launch { prefs.setVoiceWakeEnabled(on) }
+            }
+        )
+        Column(modifier = Modifier.padding(horizontal = 24.dp)) {
+            OutlinedTextField(
+                value = wakeWord,
+                onValueChange = {
+                    wakeWord = it
+                    scope.launch { prefs.setVoiceWakeWord(it) }
+                },
+                label = { Text("唤醒词（英文小写）") },
+                placeholder = { Text("hey kiwi") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp),
+                enabled = enabled,
+                textStyle = MaterialTheme.typography.bodyMedium
+            )
+            if (enabled) {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    if (listening) "状态：正在聆听…" else "状态：准备中…",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ClipboardMonitorSettingsSection() {
+    val prefs = com.orizon.openkiwi.OpenKiwiApp.instance.container.userPreferences
+    val scope = rememberCoroutineScope()
+    var enabled by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        prefs.clipboardMonitorEnabled.collect { enabled = it }
+    }
+    SettingsSection(title = "剪贴板") {
+        SettingsSwitchItem(
+            icon = Icons.Outlined.ContentPaste,
+            title = "剪贴板快捷操作",
+            subtitle = "开启后常驻通知：复制文本后可点「AI 分析 / 搜索摘要 / 翻译」发到对话（需通知权限）。",
+            checked = enabled,
+            onCheckedChange = { on ->
+                scope.launch { prefs.setClipboardMonitorEnabled(on) }
+            }
+        )
     }
 }
 
@@ -605,6 +863,9 @@ private fun NotificationModelSection() {
 
     var enabled by remember { mutableStateOf(false) }
     var selectedModelId by remember { mutableStateOf("") }
+    var autoReply by remember { mutableStateOf(false) }
+    var autoReplyTemplate by remember { mutableStateOf("收到") }
+    var autoReplyPkgs by remember { mutableStateOf("") }
     val models by container.modelRepository.getAllConfigs().collectAsState(initial = emptyList())
 
     LaunchedEffect(Unit) {
@@ -612,6 +873,15 @@ private fun NotificationModelSection() {
     }
     LaunchedEffect(Unit) {
         prefs.notificationModelId.collect { selectedModelId = it }
+    }
+    LaunchedEffect(Unit) {
+        prefs.notifAutoReplyEnabled.collect { autoReply = it }
+    }
+    LaunchedEffect(Unit) {
+        prefs.notifAutoReplyTemplate.collect { autoReplyTemplate = it }
+    }
+    LaunchedEffect(Unit) {
+        prefs.notifAutoReplyPackages.collect { autoReplyPkgs = it }
     }
 
     val smallModels = remember(models) { models.filter { it.isSmallModel } }
@@ -686,6 +956,84 @@ private fun NotificationModelSection() {
                 modifier = Modifier.padding(horizontal = 8.dp)
             )
         }
+
+        SettingsSwitchItem(
+            icon = Icons.Outlined.Reply,
+            title = "通知快捷自动回复",
+            subtitle = "对支持「内联回复」的消息类通知发送固定文案（微信/短信等）。留空包名列表则使用内置白名单。每小时每应用有次数上限。",
+            checked = autoReply,
+            onCheckedChange = { on ->
+                autoReply = on
+                scope.launch { prefs.setNotifAutoReplyEnabled(on) }
+            }
+        )
+        if (autoReply) {
+            Column(modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp)) {
+                OutlinedTextField(
+                    value = autoReplyTemplate,
+                    onValueChange = {
+                        autoReplyTemplate = it
+                        scope.launch { prefs.setNotifAutoReplyTemplate(it) }
+                    },
+                    label = { Text("回复文案") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = autoReplyPkgs,
+                    onValueChange = {
+                        autoReplyPkgs = it
+                        scope.launch { prefs.setNotifAutoReplyPackages(it) }
+                    },
+                    label = { Text("包名白名单（可选，逗号分隔）") },
+                    placeholder = { Text("留空=微信/QQ/短信等默认列表") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    minLines = 2
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RagSettingsSection() {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val ragDao = com.orizon.openkiwi.OpenKiwiApp.instance.container.database.ragChunkDao()
+    var status by remember {
+        mutableStateOf("扫描「文档」「下载」目录中的文本与常见办公文件，供工具 local_rag 检索。")
+    }
+    var busy by remember { mutableStateOf(false) }
+
+    SettingsSection(title = "本地知识库 (RAG)") {
+        Text(
+            status,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+        )
+        Button(
+            onClick = {
+                if (busy) return@Button
+                busy = true
+                scope.launch {
+                    status = runCatching {
+                        com.orizon.openkiwi.core.rag.LocalFileIndexer.refresh(context, ragDao)
+                    }.fold(
+                        onSuccess = { it },
+                        onFailure = { e -> "索引失败: ${e.message}" }
+                    )
+                    busy = false
+                }
+            },
+            enabled = !busy,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+        ) {
+            Text(if (busy) "索引中…" else "重建索引")
+        }
     }
 }
 
@@ -693,6 +1041,7 @@ private fun NotificationModelSection() {
 private fun FeishuSettingsSection() {
     val prefs = com.orizon.openkiwi.OpenKiwiApp.instance.container.userPreferences
     val feishuClient = com.orizon.openkiwi.OpenKiwiApp.instance.container.feishuApiClient
+    val feishuWs = com.orizon.openkiwi.OpenKiwiApp.instance.container.feishuLarkWsClient
     val scope = rememberCoroutineScope()
 
     var feishuAppId by remember { mutableStateOf("") }
@@ -701,12 +1050,17 @@ private fun FeishuSettingsSection() {
     var isConnected by remember { mutableStateOf(feishuClient.isAuthenticated()) }
     var isTesting by remember { mutableStateOf(false) }
     var testResult by remember { mutableStateOf<String?>(null) }
+    var feishuDirectLc by remember { mutableStateOf(false) }
+    val wsThreadActive by feishuWs.active.collectAsState(initial = false)
 
     LaunchedEffect(Unit) {
         prefs.feishuAppId.collect { feishuAppId = it }
     }
     LaunchedEffect(Unit) {
         prefs.feishuAppSecret.collect { feishuAppSecret = it }
+    }
+    LaunchedEffect(Unit) {
+        prefs.feishuDirectLongConnection.collect { feishuDirectLc = it }
     }
 
     SettingsSection(title = "飞书") {
@@ -768,23 +1122,37 @@ private fun FeishuSettingsSection() {
                         isTesting = true
                         testResult = null
                         scope.launch {
-                            val result = feishuClient.authenticate(
-                                com.orizon.openkiwi.network.FeishuConfig(
-                                    appId = feishuAppId,
-                                    appSecret = feishuAppSecret
+                            val start = System.currentTimeMillis()
+                            Log.i("FeishuSettings", "test connection start on ${Thread.currentThread().name}")
+                            try {
+                                val result = feishuClient.authenticate(
+                                    com.orizon.openkiwi.network.FeishuConfig(
+                                        appId = feishuAppId,
+                                        appSecret = feishuAppSecret
+                                    )
                                 )
-                            )
-                            result.fold(
-                                onSuccess = {
-                                    isConnected = true
-                                    testResult = "连接成功"
-                                },
-                                onFailure = {
-                                    isConnected = false
-                                    testResult = "连接失败: ${it.message}"
-                                }
-                            )
-                            isTesting = false
+                                result.fold(
+                                    onSuccess = {
+                                        isConnected = true
+                                        testResult = "连接成功"
+                                        Log.i(
+                                            "FeishuSettings",
+                                            "test connection success in ${System.currentTimeMillis() - start}ms"
+                                        )
+                                    },
+                                    onFailure = {
+                                        isConnected = false
+                                        testResult = "连接失败: ${it.message}"
+                                        Log.e(
+                                            "FeishuSettings",
+                                            "test connection failed in ${System.currentTimeMillis() - start}ms: ${it.message}",
+                                            it
+                                        )
+                                    }
+                                )
+                            } finally {
+                                isTesting = false
+                            }
                         }
                     },
                     enabled = !isTesting && feishuAppId.isNotBlank() && feishuAppSecret.isNotBlank(),
@@ -810,6 +1178,25 @@ private fun FeishuSettingsSection() {
                            else MaterialTheme.colorScheme.error
                 )
             }
+            Spacer(Modifier.height(12.dp))
+            SettingsSwitchItem(
+                icon = Icons.Outlined.Smartphone,
+                title = "手机直连长连接",
+                subtitle = "在本机建立飞书 WebSocket，无需 PC 转发。开发者后台：事件订阅 → 使用长连接接收事件（需本开关开启且凭证正确）",
+                checked = feishuDirectLc,
+                onCheckedChange = { on ->
+                    scope.launch { prefs.setFeishuDirectLongConnection(on) }
+                }
+            )
+            if (feishuDirectLc) {
+                Text(
+                    if (wsThreadActive) "直连：长连接线程运行中"
+                    else "直连：等待启动（保存 App ID/Secret 后会自动连接）",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
+                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp)
+                )
+            }
             Spacer(Modifier.height(16.dp))
 
             HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
@@ -822,7 +1209,8 @@ private fun FeishuSettingsSection() {
             )
             Spacer(Modifier.height(4.dp))
             Text(
-                "在飞书开放平台 → 事件订阅中，将请求地址设为：\nhttp://<你的公网IP>:8765/api/feishu/event\n可通过 ngrok 等工具将本地端口映射到公网。",
+                "方式一：开启上方「手机直连长连接」，或使用 Companion PC「飞书」页签启动长连接（勿同时开两个，以免重复处理）。\n" +
+                "方式二：飞书开放平台 → 事件订阅 → Webhook，请求地址设为 http://<公网IP>:8765/api/feishu/event",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f)
             )

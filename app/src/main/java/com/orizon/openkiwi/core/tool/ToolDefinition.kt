@@ -47,7 +47,15 @@ data class ToolResult(
     val success: Boolean,
     val output: String,
     val error: String? = null,
-    val executionTimeMs: Long = 0
+    val executionTimeMs: Long = 0,
+    val artifacts: List<ToolArtifact> = emptyList()
+)
+
+data class ToolArtifact(
+    val filePath: String,
+    val displayName: String = java.io.File(filePath).name,
+    val mimeType: String? = null,
+    val sizeBytes: Long? = null
 )
 
 interface Tool {

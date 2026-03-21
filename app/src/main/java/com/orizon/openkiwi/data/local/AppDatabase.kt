@@ -18,9 +18,12 @@ import com.orizon.openkiwi.data.local.entity.*
         SkillEntity::class,
         NoteEntity::class,
         CustomToolEntity::class,
-        AuditLogEntity::class
+        AuditLogEntity::class,
+        ArtifactEntity::class,
+        ScheduledTaskEntity::class,
+        RagChunkEntity::class
     ],
-    version = 6,
+    version = 9,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -34,6 +37,9 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun noteDao(): NoteDao
     abstract fun customToolDao(): CustomToolDao
     abstract fun auditLogDao(): AuditLogDao
+    abstract fun artifactDao(): ArtifactDao
+    abstract fun scheduledTaskDao(): ScheduledTaskDao
+    abstract fun ragChunkDao(): RagChunkDao
 
     companion object {
         @Volatile

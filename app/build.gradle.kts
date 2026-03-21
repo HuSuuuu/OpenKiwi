@@ -4,6 +4,7 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
+    id("com.chaquo.python")
 }
 
 android {
@@ -17,6 +18,10 @@ android {
         versionCode = 1
         versionName = "1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        ndk {
+            abiFilters += listOf("arm64-v8a", "x86_64")
+        }
     }
 
     buildTypes {
@@ -37,6 +42,24 @@ android {
     }
     buildFeatures {
         compose = true
+    }
+    packaging {
+        resources {
+            excludes += "/META-INF/{DEPENDENCIES,DEPENDENCIES.txt,LICENSE,LICENSE.txt,NOTICE,NOTICE.txt}"
+        }
+    }
+}
+
+chaquopy {
+    defaultConfig {
+        version = "3.13"
+        pip {
+            install("requests")
+            install("beautifulsoup4")
+        }
+        pyc {
+            src = false
+        }
     }
 }
 
@@ -68,6 +91,12 @@ dependencies {
 
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.androidx.work.runtime.ktx)
+
+    implementation("com.tom-roush:pdfbox-android:2.0.27.0")
+
+    // Feishu/Lark long-connection (WebSocket) — same protocol as PC companion lark-oapi
+    implementation("com.larksuite.oapi:oapi-sdk:2.4.8")
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

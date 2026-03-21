@@ -49,7 +49,7 @@ class OpenAIApiClient(
     ): Result<ChatCompletionResponse> = withContext(Dispatchers.IO) {
         runCatching {
             val url = buildUrl(baseUrl)
-            val hasVision = request.messages.any { it.imageUrl != null }
+            val hasVision = request.messages.any { it.imageUrl != null || it.videoUrl != null }
             val body = if (hasVision) encodeVisionRequest(request, stream = false) else json.encodeToString(ChatCompletionRequest.serializer(), request.copy(stream = false))
             val httpRequest = Request.Builder()
                 .url(url)
@@ -70,8 +70,25 @@ class OpenAIApiClient(
 
     private fun encodeVisionRequest(request: ChatCompletionRequest, stream: Boolean = false): String {
         val messagesJson = request.messages.joinToString(",") { msg ->
-            if (msg.imageUrl != null) {
-                """{"role":"${msg.role.name.lowercase()}","content":[{"type":"image_url","image_url":{"url":"${msg.imageUrl}"}},{"type":"text","text":${json.encodeToString(String.serializer(), msg.content ?: "")}}]}"""
+            if (msg.imageUrl != null || msg.videoUrl != null) {
+                val contentParts = buildString {
+                    append("[")
+                    var first = true
+                    msg.videoUrl?.let { url ->
+                        if (!first) append(",")
+                        first = false
+                        append("""{"type":"video_url","video_url":{"url":"$url"}}""")
+                    }
+                    msg.imageUrl?.let { url ->
+                        if (!first) append(",")
+                        first = false
+                        append("""{"type":"image_url","image_url":{"url":"$url"}}""")
+                    }
+                    if (!first) append(",")
+                    append("""{"type":"text","text":${json.encodeToString(String.serializer(), msg.content ?: "")}}""")
+                    append("]")
+                }
+                """{"role":"${msg.role.name.lowercase()}","content":$contentParts}"""
             } else if (msg.toolCalls != null) {
                 json.encodeToString(ChatMessage.serializer(), msg)
             } else {
@@ -93,7 +110,7 @@ class OpenAIApiClient(
         request: ChatCompletionRequest
     ): Flow<StreamChunk> = callbackFlow {
         val url = buildUrl(baseUrl)
-        val hasVision = request.messages.any { it.imageUrl != null }
+        val hasVision = request.messages.any { it.imageUrl != null || it.videoUrl != null }
         val streamRequest = request.copy(stream = true, streamOptions = StreamOptions(includeUsage = true))
         val body = if (hasVision) encodeVisionRequest(streamRequest, stream = true)
                    else json.encodeToString(ChatCompletionRequest.serializer(), streamRequest)

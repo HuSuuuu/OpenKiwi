@@ -103,15 +103,8 @@ class MemoryManager(private val memoryDao: MemoryDao) {
         return buildList {
             addAll(systemMessages)
             if (middleMessages.isNotEmpty()) {
-                val rawText = middleMessages.joinToString("\n") {
-                    "[${it.role.name}]: ${it.content ?: ""}"
-                }
-                val summary = if (summarizer != null) {
-                    runCatching { summarizer(rawText) }.getOrElse { rawText.take(500) }
-                } else {
-                    middleMessages.joinToString("\n") {
-                        "[${it.role.name}]: ${it.content?.take(100) ?: ""}"
-                    }
+                val summary = middleMessages.joinToString("\n") {
+                    "[${it.role.name}]: ${it.content?.take(100) ?: ""}"
                 }
                 add(ChatMessage(
                     role = ChatRole.SYSTEM,

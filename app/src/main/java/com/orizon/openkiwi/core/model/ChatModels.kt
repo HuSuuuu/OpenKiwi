@@ -19,7 +19,23 @@ data class ChatMessage(
     @SerialName("tool_calls") val toolCalls: List<ToolCall>? = null,
     @SerialName("tool_call_id") val toolCallId: String? = null,
     @SerialName("reasoning_content") val reasoningContent: String? = null,
-    @kotlinx.serialization.Transient val imageUrl: String? = null
+    @kotlinx.serialization.Transient val imageUrl: String? = null,
+    @kotlinx.serialization.Transient val videoUrl: String? = null,
+    @kotlinx.serialization.Transient val messageId: Long = 0,
+    @kotlinx.serialization.Transient val turnId: Long = 0,
+    @kotlinx.serialization.Transient val artifacts: List<ChatArtifact> = emptyList()
+)
+
+data class ChatArtifact(
+    val id: Long = 0,
+    val sessionId: String,
+    val messageId: Long? = null,
+    val toolName: String,
+    val filePath: String,
+    val displayName: String,
+    val mimeType: String? = null,
+    val sizeBytes: Long? = null,
+    val createdAt: Long = System.currentTimeMillis()
 )
 
 @Serializable

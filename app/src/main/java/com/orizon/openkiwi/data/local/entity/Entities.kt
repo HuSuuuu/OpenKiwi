@@ -27,6 +27,19 @@ data class MessageEntity(
     val timestamp: Long = System.currentTimeMillis()
 )
 
+@Entity(tableName = "artifacts")
+data class ArtifactEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val sessionId: String,
+    val messageId: Long? = null,
+    val toolName: String,
+    val filePath: String,
+    val displayName: String,
+    val mimeType: String? = null,
+    val sizeBytes: Long? = null,
+    val createdAt: Long = System.currentTimeMillis()
+)
+
 @Entity(tableName = "model_configs")
 data class ModelConfigEntity(
     @PrimaryKey val id: String,
@@ -127,4 +140,29 @@ data class AuditLogEntity(
     val result: String,
     val permissionUsed: String? = null,
     val sessionId: String? = null
+)
+
+@Entity(tableName = "scheduled_tasks")
+data class ScheduledTaskEntity(
+    @PrimaryKey val id: String,
+    val name: String,
+    val prompt: String,
+    /** Repeat interval; WorkManager requires at least 15 minutes. */
+    val intervalMinutes: Long = 60L,
+    val enabled: Boolean = true,
+    val sessionId: String? = null,
+    val lastRunAt: Long = 0L,
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+@Entity(
+    tableName = "rag_chunks",
+    indices = [androidx.room.Index(value = ["path"])]
+)
+data class RagChunkEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val path: String,
+    val chunkIndex: Int,
+    val content: String,
+    val updatedAt: Long = System.currentTimeMillis()
 )

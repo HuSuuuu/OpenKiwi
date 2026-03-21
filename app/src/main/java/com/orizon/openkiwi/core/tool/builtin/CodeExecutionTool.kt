@@ -4,18 +4,22 @@ import com.orizon.openkiwi.core.code.CodeSandbox
 import com.orizon.openkiwi.core.code.SandboxConfig
 import com.orizon.openkiwi.core.tool.*
 import com.orizon.openkiwi.service.overlay.TerminalOverlayService
+import java.io.File
 
 class CodeExecutionTool(private val sandbox: CodeSandbox) : Tool {
 
     override val definition = ToolDefinition(
         name = "code_execute",
-        description = "Execute code in a sandboxed environment. Supports shell, python, and javascript. Returns stdout, stderr, and exit code.",
+        description = """Execute code in a sandboxed environment. Returns stdout, stderr, and exit code.
+- python: Runs LOCALLY on the phone via embedded CPython (full standard library + requests, beautifulsoup4). No PC needed.
+- shell: Runs locally via Android sh (ls, cat, grep, find, curl, wget, pm, am, dumpsys, settings, getprop, input, etc.)
+- javascript/powershell/cmd: Requires connected Companion PC.""",
         category = ToolCategory.CODE_EXECUTION.name,
         permissionLevel = PermissionLevel.DANGEROUS.name,
         parameters = mapOf(
             "code" to ToolParamDef("string", "Code to execute", required = true),
-            "language" to ToolParamDef("string", "Language: shell, python, javascript", required = true,
-                enumValues = listOf("shell", "python", "javascript")),
+            "language" to ToolParamDef("string", "Language: shell, python, javascript, powershell", required = true,
+                enumValues = listOf("shell", "python", "javascript", "powershell")),
             "timeout_ms" to ToolParamDef("string", "Execution timeout in milliseconds (default 30000)")
         ),
         requiredParams = listOf("code", "language"),
@@ -57,6 +61,30 @@ class CodeExecutionTool(private val sandbox: CodeSandbox) : Tool {
             if (result.truncated) appendLine("[Output truncated]")
         }
 
-        return ToolResult("code_execute", result.exitCode == 0, output, executionTimeMs = result.executionTimeMs)
+        return ToolResult(
+            "code_execute",
+            result.exitCode == 0,
+            output,
+            executionTimeMs = result.executionTimeMs,
+            artifacts = extractArtifacts(result.stdout, result.stderr)
+        )
+    }
+
+    private fun extractArtifacts(stdout: String, stderr: String): List<ToolArtifact> {
+        val text = "$stdout\n$stderr"
+        val pathRegex = Regex("""(?m)(?:saved to|written to|created file|output file|file:)\s+([/\w\-. ]+\.\w+)""", RegexOption.IGNORE_CASE)
+        return pathRegex.findAll(text)
+            .mapNotNull { match ->
+                val raw = match.groupValues[1].trim().trim('"')
+                val file = File(raw)
+                if (!file.exists() || !file.isFile) return@mapNotNull null
+                ToolArtifact(
+                    filePath = file.absolutePath,
+                    displayName = file.name,
+                    sizeBytes = file.length()
+                )
+            }
+            .distinctBy { it.filePath }
+            .toList()
     }
 }

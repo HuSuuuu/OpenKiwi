@@ -1,7 +1,6 @@
 package com.orizon.openkiwi.core.model
 
 import com.orizon.openkiwi.data.repository.ModelRepository
-import kotlinx.coroutines.flow.first
 
 class SmartModelDispatcher(private val modelRepository: ModelRepository) {
 
@@ -38,7 +37,7 @@ class SmartModelDispatcher(private val modelRepository: ModelRepository) {
     }
 
     private suspend fun getModelForScene(scene: String): ModelConfig? {
-        val configs = modelRepository.getAllConfigs().first()
+        val configs = modelRepository.getAllConfigsOnce()
         return configs.firstOrNull { scene in it.sceneTags }
             ?: configs.firstOrNull {
                 when (scene) {

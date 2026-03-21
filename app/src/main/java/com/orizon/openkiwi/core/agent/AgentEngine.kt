@@ -3,6 +3,7 @@ package com.orizon.openkiwi.core.agent
 import com.orizon.openkiwi.core.memory.MemoryManager
 import com.orizon.openkiwi.core.model.*
 import com.orizon.openkiwi.core.skill.SkillLearner
+import com.orizon.openkiwi.core.tool.ToolArtifact
 import com.orizon.openkiwi.core.tool.ToolExecutor
 import com.orizon.openkiwi.core.tool.ToolRegistry
 import com.orizon.openkiwi.data.repository.ChatRepository
@@ -10,6 +11,7 @@ import com.orizon.openkiwi.data.repository.ModelRepository
 import com.orizon.openkiwi.network.OpenAIApiClient
 import android.util.Log
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.serialization.json.Json
@@ -37,7 +39,9 @@ class AgentEngine(
         sessionId: String,
         userMessage: String,
         modelConfig: ModelConfig? = null,
-        imageUrl: String? = null
+        imageUrl: String? = null,
+        videoUrl: String? = null,
+        userText: String? = null
     ): Flow<String> = flow {
         _agentState.value = _agentState.value.copy(isProcessing = true, error = null)
 
@@ -60,10 +64,13 @@ class AgentEngine(
 
         val messages = chatRepository.getMessagesOnce(sessionId).toMutableList()
 
-        if (imageUrl != null) {
+        if (imageUrl != null || videoUrl != null) {
             val lastUserIdx = messages.indexOfLast { it.role == ChatRole.USER }
             if (lastUserIdx >= 0) {
-                messages[lastUserIdx] = messages[lastUserIdx].copy(imageUrl = imageUrl)
+                messages[lastUserIdx] = messages[lastUserIdx].copy(
+                    imageUrl = imageUrl ?: messages[lastUserIdx].imageUrl,
+                    videoUrl = videoUrl ?: messages[lastUserIdx].videoUrl
+                )
             }
         }
 
@@ -82,24 +89,25 @@ class AgentEngine(
 
         val compressedMessages = memoryManager.compressContext(
             messages, config.maxTokens / 2
-        ) { text ->
-            val summaryReq = ChatCompletionRequest(
-                model = config.modelName,
-                messages = listOf(
-                    ChatMessage(role = ChatRole.SYSTEM, content = "请简洁地总结以下对话，保留关键信息、决策和重要参数。只输出摘要。"),
-                    ChatMessage(role = ChatRole.USER, content = text)
-                ),
-                temperature = 0.3,
-                maxTokens = 500
+        )
+
+        val intentSource = userText ?: userMessage
+        val parasiticOn = ParasiticQueryTool.enabled
+        val needsTools = config.supportsTools && (parasiticOn || needsToolUse(intentSource))
+        val toolSpecs = if (needsTools) toolRegistry.toToolSpecs() else null
+
+        if (parasiticOn && needsTools) {
+            val hint = ChatMessage(
+                role = ChatRole.SYSTEM,
+                content = "用户已开启寄生模式。请使用 parasitic_query 工具将用户的问题发送给豆包，获取回复后转达给用户。"
             )
-            apiClient.chatCompletion(config.apiBaseUrl, config.apiKey, summaryReq)
-                .getOrNull()?.choices?.firstOrNull()?.message?.content ?: text.take(500)
+            messages.add(hint)
         }
-        val toolSpecs = if (config.supportsTools) toolRegistry.toToolSpecs() else null
 
         val globalFullContent = StringBuilder()
         val globalThinkingContent = StringBuilder()
         val globalToolLog = StringBuilder()
+        val pendingArtifacts = mutableListOf<Pair<String, ToolArtifact>>()
 
         try {
             var iterationMessages = compressedMessages.toMutableList()
@@ -150,7 +158,7 @@ class AgentEngine(
                                     val acc = accumulatedToolCalls.getOrPut(idx) { ToolCallAccumulator(id = "", name = "") }
                                     if (tc.id.isNotBlank()) acc.id = tc.id
                                     if (tc.function.name.isNotBlank()) acc.name = tc.function.name
-                                    if (tc.function.arguments.isNotBlank()) acc.arguments.append(tc.function.arguments)
+                                    if (tc.function.arguments.isNotEmpty()) acc.arguments.append(tc.function.arguments)
                                 }
                                 if (choice.finishReason == "tool_calls") {
                                     toolCallsDetected = true
@@ -183,6 +191,9 @@ class AgentEngine(
                             emit(callingMarker)
 
                             val result = toolExecutor.execute(tc.function.name, params, sessionId)
+                            result.artifacts.forEach { artifact ->
+                                pendingArtifacts += tc.function.name to artifact
+                            }
                             toolCallRecords.add(SkillLearner.ToolCallRecord(
                                 toolName = tc.function.name,
                                 params = params.mapValues { it.value?.toString() ?: "" },
@@ -213,7 +224,14 @@ class AgentEngine(
                         if (thinkingContent.isNotBlank()) append("<think>\n$thinkingContent\n</think>\n\n")
                         append(fullContent)
                     }
-                    chatRepository.addMessage(sessionId, ChatMessage(role = ChatRole.ASSISTANT, content = savedContent))
+                    val messageId = chatRepository.addMessage(
+                        sessionId,
+                        ChatMessage(role = ChatRole.ASSISTANT, content = savedContent)
+                    )
+                    pendingArtifacts.groupBy({ it.first }, { it.second }).forEach { (toolName, artifacts) ->
+                        chatRepository.saveToolArtifacts(sessionId, messageId, toolName, artifacts)
+                    }
+                    pendingArtifacts.clear()
                     break
                 } else {
                     val result = apiClient.chatCompletion(config.apiBaseUrl, config.apiKey, request)
@@ -237,6 +255,9 @@ class AgentEngine(
                             emit(callingMarker)
 
                             val toolResult = toolExecutor.execute(tc.function.name, params, sessionId)
+                            toolResult.artifacts.forEach { artifact ->
+                                pendingArtifacts += tc.function.name to artifact
+                            }
                             toolCallRecords.add(SkillLearner.ToolCallRecord(
                                 toolName = tc.function.name,
                                 params = params.mapValues { it.value?.toString() ?: "" },
@@ -278,7 +299,14 @@ class AgentEngine(
                         if (!reasoning.isNullOrBlank()) append("<think>\n$reasoning\n</think>\n\n")
                         append(content)
                     }
-                    chatRepository.addMessage(sessionId, ChatMessage(role = ChatRole.ASSISTANT, content = savedContent))
+                    val messageId = chatRepository.addMessage(
+                        sessionId,
+                        ChatMessage(role = ChatRole.ASSISTANT, content = savedContent)
+                    )
+                    pendingArtifacts.groupBy({ it.first }, { it.second }).forEach { (toolName, artifacts) ->
+                        chatRepository.saveToolArtifacts(sessionId, messageId, toolName, artifacts)
+                    }
+                    pendingArtifacts.clear()
                     break
                 }
             }
@@ -297,23 +325,24 @@ class AgentEngine(
             }
         } catch (e: CancellationException) {
             kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
-                savePartialResponse(sessionId, globalToolLog, globalThinkingContent, globalFullContent)
+                savePartialResponse(sessionId, globalToolLog, globalThinkingContent, globalFullContent, pendingArtifacts)
             }
             throw e
         } catch (e: Exception) {
-            savePartialResponse(sessionId, globalToolLog, globalThinkingContent, globalFullContent)
+            savePartialResponse(sessionId, globalToolLog, globalThinkingContent, globalFullContent, pendingArtifacts)
             val err = "错误: ${e.message}"
             emitError(sessionId, err)
         } finally {
             _agentState.value = _agentState.value.copy(isProcessing = false)
         }
-    }
+    }.flowOn(Dispatchers.Default)
 
     private suspend fun savePartialResponse(
         sessionId: String,
         toolLog: StringBuilder,
         thinking: StringBuilder,
-        content: StringBuilder
+        content: StringBuilder,
+        pendingArtifacts: List<Pair<String, ToolArtifact>>
     ) {
         if (content.isBlank() && thinking.isBlank() && toolLog.isBlank()) return
         runCatching {
@@ -324,7 +353,13 @@ class AgentEngine(
                 if (isNotBlank()) append("\n\n[生成中断]")
             }
             if (savedContent.isNotBlank()) {
-                chatRepository.addMessage(sessionId, ChatMessage(role = ChatRole.ASSISTANT, content = savedContent))
+                val messageId = chatRepository.addMessage(
+                    sessionId,
+                    ChatMessage(role = ChatRole.ASSISTANT, content = savedContent)
+                )
+                pendingArtifacts.groupBy({ it.first }, { it.second }).forEach { (toolName, artifacts) ->
+                    chatRepository.saveToolArtifacts(sessionId, messageId, toolName, artifacts)
+                }
             }
         }
     }
@@ -345,6 +380,32 @@ class AgentEngine(
             val jsonObj = json.decodeFromString<JsonObject>(arguments)
             jsonObj.mapValues { (_, value) -> value.jsonPrimitive.content }
         }.getOrDefault(emptyMap())
+    }
+
+    private fun needsToolUse(text: String): Boolean {
+        val trimmed = text.trim()
+        if (trimmed.isEmpty()) return false
+
+        val actionKeywords = listOf(
+            "打开", "启动", "运行", "执行", "安装", "卸载", "删除",
+            "发送", "发短信", "打电话", "拨打", "呼叫",
+            "搜索", "搜一下", "查一下", "查找", "查询",
+            "下载", "上传", "传输",
+            "拍照", "录音", "录像", "截图", "截屏",
+            "设置", "修改设置", "调整",
+            "创建文件", "写入文件", "保存到", "新建",
+            "连接", "SSH", "蓝牙", "WiFi",
+            "导航到", "定位", "位置",
+            "提醒", "闹钟", "日历",
+            "复制", "粘贴", "剪切",
+            "寄生", "豆包", "问豆包", "让豆包",
+            "open", "launch", "run", "execute", "install", "delete",
+            "send", "call", "search", "download", "upload",
+            "take photo", "record", "screenshot",
+            "navigate", "connect", "parasitic", "doubao"
+        )
+        val lower = trimmed.lowercase()
+        return actionKeywords.any { lower.contains(it) }
     }
 }
 

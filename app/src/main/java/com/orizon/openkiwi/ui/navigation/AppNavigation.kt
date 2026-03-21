@@ -8,6 +8,8 @@ import androidx.navigation.compose.rememberNavController
 import com.orizon.openkiwi.OpenKiwiApp
 import com.orizon.openkiwi.ui.chat.ChatScreen
 import com.orizon.openkiwi.ui.chat.ChatViewModel
+import com.orizon.openkiwi.ui.artifact.ArtifactScreen
+import com.orizon.openkiwi.ui.artifact.ArtifactViewModel
 import com.orizon.openkiwi.ui.devices.DeviceScreen
 import com.orizon.openkiwi.ui.devices.DeviceViewModel
 import com.orizon.openkiwi.ui.logs.AuditLogScreen
@@ -29,6 +31,10 @@ import com.orizon.openkiwi.ui.tool.ToolScreen
 import com.orizon.openkiwi.ui.tool.ToolViewModel
 import com.orizon.openkiwi.ui.voice.VoiceScreen
 import com.orizon.openkiwi.ui.voice.VoiceViewModel
+import com.orizon.openkiwi.ui.schedule.ScheduleScreen
+import com.orizon.openkiwi.ui.schedule.ScheduleViewModel
+import com.orizon.openkiwi.ui.recipe.RecipeScreen
+import com.orizon.openkiwi.ui.recipe.RecipeViewModel
 
 object Routes {
     const val CHAT = "chat"
@@ -43,6 +49,9 @@ object Routes {
     const val VOICE = "voice"
     const val NOTES = "notes"
     const val TOOLS = "tools"
+    const val ARTIFACTS = "artifacts"
+    const val SCHEDULE = "schedule"
+    const val RECIPES = "recipes"
 }
 
 @Composable
@@ -72,7 +81,10 @@ fun AppNavigation() {
                 onNavigateToTerminal = { navController.navigate(Routes.TERMINAL) { launchSingleTop = true } },
                 onNavigateToVoice = { navController.navigate(Routes.VOICE) { launchSingleTop = true } },
                 onNavigateToNotes = { navController.navigate(Routes.NOTES) { launchSingleTop = true } },
-                onNavigateToTools = { navController.navigate(Routes.TOOLS) { launchSingleTop = true } }
+                onNavigateToTools = { navController.navigate(Routes.TOOLS) { launchSingleTop = true } },
+                onNavigateToArtifacts = { navController.navigate(Routes.ARTIFACTS) { launchSingleTop = true } },
+                onNavigateToSchedule = { navController.navigate(Routes.SCHEDULE) { launchSingleTop = true } },
+                onNavigateToRecipes = { navController.navigate(Routes.RECIPES) { launchSingleTop = true } }
             )
         }
 
@@ -152,6 +164,33 @@ fun AppNavigation() {
                 )
             )
             ToolScreen(viewModel = vm, onBack = { navController.popBackStack() })
+        }
+
+        composable(Routes.ARTIFACTS) {
+            val vm: ArtifactViewModel = viewModel(
+                factory = ArtifactViewModel.Factory(container.artifactRepository)
+            )
+            ArtifactScreen(viewModel = vm, onBack = { navController.popBackStack() })
+        }
+
+        composable(Routes.SCHEDULE) {
+            val vm: ScheduleViewModel = viewModel(
+                factory = ScheduleViewModel.Factory(
+                    container.database.scheduledTaskDao(),
+                    container.scheduleManager
+                )
+            )
+            ScheduleScreen(viewModel = vm, onBack = { navController.popBackStack() })
+        }
+
+        composable(Routes.RECIPES) {
+            val vm: RecipeViewModel = viewModel(
+                factory = RecipeViewModel.Factory(
+                    container.recipeManager,
+                    container.recipeExecutor
+                )
+            )
+            RecipeScreen(viewModel = vm, onBack = { navController.popBackStack() })
         }
     }
 }

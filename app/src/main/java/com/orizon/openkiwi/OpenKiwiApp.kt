@@ -4,6 +4,9 @@ import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
+import android.util.Log
+import com.chaquo.python.Python
+import com.chaquo.python.android.AndroidPlatform
 import com.orizon.openkiwi.core.model.ModelConfig
 import com.orizon.openkiwi.di.AppContainer
 import kotlinx.coroutines.CoroutineScope
@@ -24,6 +27,21 @@ class OpenKiwiApp : Application() {
         container = AppContainer(this)
         createNotificationChannels()
         seedPresetModelsIfNeeded()
+        warmupPythonAsync()
+    }
+
+    private fun warmupPythonAsync() {
+        appScope.launch {
+            if (!Python.isStarted()) {
+                try {
+                    Python.start(AndroidPlatform(this@OpenKiwiApp))
+                    Log.i("OpenKiwiApp", "Embedded Python started successfully")
+                } catch (t: Throwable) {
+                    // Never block app startup on Python runtime init.
+                    Log.e("OpenKiwiApp", "Failed to start embedded Python", t)
+                }
+            }
+        }
     }
 
     private fun seedPresetModelsIfNeeded() {

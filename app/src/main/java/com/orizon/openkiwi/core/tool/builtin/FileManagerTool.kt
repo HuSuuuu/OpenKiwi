@@ -52,7 +52,18 @@ class FileManagerTool(private val context: Context) : Tool {
                     )
                     file.parentFile?.mkdirs()
                     file.writeText(content)
-                    ToolResult(toolName = definition.name, success = true, output = "Written ${content.length} chars to $path")
+                    ToolResult(
+                        toolName = definition.name,
+                        success = true,
+                        output = "Written ${content.length} chars to $path",
+                        artifacts = listOf(
+                            ToolArtifact(
+                                filePath = file.absolutePath,
+                                displayName = file.name,
+                                sizeBytes = file.length()
+                            )
+                        )
+                    )
                 }
                 "list" -> {
                     if (!file.exists() || !file.isDirectory) return@runCatching ToolResult(

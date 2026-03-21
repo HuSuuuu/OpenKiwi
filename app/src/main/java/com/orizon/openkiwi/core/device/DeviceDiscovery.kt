@@ -3,6 +3,7 @@ package com.orizon.openkiwi.core.device
 import android.content.Context
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
+import android.os.Build
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -23,6 +24,8 @@ class DeviceDiscovery(private val context: Context) {
     private val _devices = MutableStateFlow<List<DiscoveredDevice>>(emptyList())
     val devices: StateFlow<List<DiscoveredDevice>> = _devices.asStateFlow()
     private var nsdManager: NsdManager? = null
+    private var companionNsd: NsdManager? = null
+    private var companionRegistrationListener: NsdManager.RegistrationListener? = null
 
     fun startDiscovery(serviceType: String = "_ssh._tcp.") {
         nsdManager = context.getSystemService(Context.NSD_SERVICE) as NsdManager
@@ -66,6 +69,38 @@ class DeviceDiscovery(private val context: Context) {
 
     fun stopDiscovery() {
         runCatching { nsdManager?.stopServiceDiscovery(null) }
+    }
+
+    /**
+     * Advertises this phone's Companion WebSocket port so the PC app can discover it via mDNS (_openkiwi._tcp).
+     */
+    fun registerOpenKiwiCompanionService(port: Int) {
+        unregisterOpenKiwiCompanionService()
+        val mgr = context.getSystemService(Context.NSD_SERVICE) as? NsdManager ?: return
+        companionNsd = mgr
+        val serviceName = (Build.MODEL?.ifBlank { null } ?: "OpenKiwi").take(28)
+        val info = NsdServiceInfo().apply {
+            this.serviceName = serviceName
+            serviceType = "_openkiwi._tcp."
+            this.port = port
+        }
+        val listener = object : NsdManager.RegistrationListener {
+            override fun onServiceRegistered(serviceInfo: NsdServiceInfo) {}
+            override fun onRegistrationFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {}
+            override fun onServiceUnregistered(serviceInfo: NsdServiceInfo) {}
+            override fun onUnregistrationFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {}
+        }
+        companionRegistrationListener = listener
+        runCatching {
+            mgr.registerService(info, NsdManager.PROTOCOL_DNS_SD, listener)
+        }
+    }
+
+    fun unregisterOpenKiwiCompanionService() {
+        val listener = companionRegistrationListener ?: return
+        runCatching { companionNsd?.unregisterService(listener) }
+        companionRegistrationListener = null
+        companionNsd = null
     }
 
     fun pingHost(host: String, timeoutMs: Int = 3000): Boolean =

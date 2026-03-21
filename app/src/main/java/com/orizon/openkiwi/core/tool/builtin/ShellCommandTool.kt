@@ -5,13 +5,22 @@ import com.orizon.openkiwi.service.overlay.TerminalOverlayService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.BufferedReader
+import java.io.File
 import java.io.InputStreamReader
 import java.util.concurrent.TimeUnit
 
 class ShellCommandTool : Tool {
     override val definition = ToolDefinition(
         name = "shell_command",
-        description = "Execute a shell command on the device and return the output. Only non-root commands are allowed by default.",
+        description = """Execute a shell command locally on Android. Non-root but with expanded PATH (/system/bin, /system/xbin, /vendor/bin, /sbin).
+Available: ls, cat, echo, grep, find, wc, sort, head, tail, cp, mv, mkdir, rm, touch, chmod, chown, ln,
+date, uptime, whoami, id, uname, hostname, df, du, stat, file,
+ps, top -n1, kill, nice, nohup,
+ifconfig, ip, ping, traceroute, netstat, ss, nslookup, curl, wget,
+getprop, setprop, dumpsys, pm (list/install/uninstall/clear), am (start/broadcast/force-stop),
+content query/insert/update/delete, settings get/put/list, input (text/tap/swipe/keyevent),
+logcat -d, dmesg, service list, cmd, toybox, toolbox.
+For Python scripts, use code_execute with language=python (runs locally via embedded CPython).""",
         category = ToolCategory.CODE_EXECUTION.name,
         permissionLevel = PermissionLevel.DANGEROUS.name,
         parameters = mapOf(
@@ -40,9 +49,10 @@ class ShellCommandTool : Tool {
         TerminalOverlayService.setStatus(TerminalOverlayService.ExecutionStatus.RUNNING)
 
         runCatching {
-            val process = ProcessBuilder("sh", "-c", command)
+            val pb = ProcessBuilder("sh", "-c", command)
                 .redirectErrorStream(true)
-                .start()
+            pb.environment()["PATH"] = "/system/bin:/system/xbin:/vendor/bin:/sbin"
+            val process = pb.start()
 
             val completed = process.waitFor(timeout, TimeUnit.SECONDS)
             if (!completed) {
@@ -68,10 +78,27 @@ class ShellCommandTool : Tool {
                 toolName = definition.name,
                 success = exitCode == 0,
                 output = output.take(10_000),
-                error = if (exitCode != 0) "Exit code: $exitCode" else null
+                error = if (exitCode != 0) "Exit code: $exitCode" else null,
+                artifacts = extractArtifacts(output)
             )
         }.getOrElse { e ->
             ToolResult(toolName = definition.name, success = false, output = "", error = e.message)
         }
+    }
+
+    private fun extractArtifacts(output: String): List<ToolArtifact> {
+        val pathRegex = Regex("""(?m)(?:saved to|written to|created file|output file|file:)\s+([/\w\-. ]+\.\w+)""", RegexOption.IGNORE_CASE)
+        return pathRegex.findAll(output)
+            .mapNotNull { match ->
+                val file = File(match.groupValues[1].trim().trim('"'))
+                if (!file.exists() || !file.isFile) return@mapNotNull null
+                ToolArtifact(
+                    filePath = file.absolutePath,
+                    displayName = file.name,
+                    sizeBytes = file.length()
+                )
+            }
+            .distinctBy { it.filePath }
+            .toList()
     }
 }

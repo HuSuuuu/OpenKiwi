@@ -19,13 +19,25 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.BorderStroke
 
 data class MessageUiModel(
     val id: Long = 0,
     val role: String,
     val content: String,
     val thinking: String = "",
-    val isStreaming: Boolean = false
+    val isStreaming: Boolean = false,
+    val turnId: Long = 0,
+    val artifacts: List<ArtifactUiModel> = emptyList()
+)
+
+data class ArtifactUiModel(
+    val id: Long = 0,
+    val path: String,
+    val displayName: String,
+    val mimeType: String? = null,
+    val sizeBytes: Long? = null
 )
 
 data class ToolAction(
@@ -36,6 +48,11 @@ data class ToolAction(
 @Composable
 fun MessageBubble(
     message: MessageUiModel,
+    onRetry: ((Long) -> Unit)? = null,
+    onBranch: ((Long) -> Unit)? = null,
+    onEditAsDraft: ((Long) -> Unit)? = null,
+    onOpenArtifact: ((ArtifactUiModel) -> Unit)? = null,
+    onShareArtifact: ((ArtifactUiModel) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val isUser = message.role == "USER"
@@ -51,23 +68,30 @@ fun MessageBubble(
     ) {
         if (isUser) {
             Surface(
-                shape = RoundedCornerShape(20.dp, 20.dp, 4.dp, 20.dp),
-                color = MaterialTheme.colorScheme.primary,
+                shape = RoundedCornerShape(18.dp, 18.dp, 4.dp, 18.dp),
+                color = com.orizon.openkiwi.ui.theme.LuminaGlassUser,
+                border = BorderStroke(1.dp, com.orizon.openkiwi.ui.theme.LuminaGlassBorderHighlight),
                 modifier = Modifier.widthIn(max = 320.dp)
             ) {
                 Text(
                     text = parsed.textContent,
                     style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onPrimary,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+                    color = Color.Black,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)
                 )
             }
         } else {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth(0.92f)
-                    .animateContentSize()
+            Surface(
+                shape = RoundedCornerShape(18.dp, 18.dp, 18.dp, 4.dp),
+                color = com.orizon.openkiwi.ui.theme.LuminaGlassLight,
+                border = BorderStroke(1.dp, com.orizon.openkiwi.ui.theme.LuminaGlassBorder),
+                modifier = Modifier.fillMaxWidth(0.85f)
             ) {
+                Column(
+                    modifier = Modifier
+                        .padding(horizontal = 16.dp, vertical = 14.dp)
+                        .animateContentSize()
+                ) {
                 if (thinking.isNotBlank()) {
                     ThinkingSection(
                         thinking = thinking,
@@ -102,8 +126,111 @@ fun MessageBubble(
                                 tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.25f)
                             )
                         }
+                        if (onRetry != null) {
+                            IconButton(
+                                onClick = { onRetry(message.id) },
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Refresh, null,
+                                    modifier = Modifier.size(13.dp),
+                                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.25f)
+                                )
+                            }
+                        }
+                        if (onBranch != null) {
+                            IconButton(
+                                onClick = { onBranch(message.id) },
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.AccountTree, null,
+                                    modifier = Modifier.size(13.dp),
+                                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.25f)
+                                )
+                            }
+                        }
+                        if (onEditAsDraft != null) {
+                            IconButton(
+                                onClick = { onEditAsDraft(message.id) },
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Edit, null,
+                                    modifier = Modifier.size(13.dp),
+                                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.25f)
+                                )
+                            }
+                        }
                     }
                 }
+
+                if (message.artifacts.isNotEmpty()) {
+                    Spacer(Modifier.height(4.dp))
+                    message.artifacts.forEach { artifact ->
+                        ArtifactChip(
+                            artifact = artifact,
+                            onOpen = { onOpenArtifact?.invoke(artifact) },
+                            onShare = { onShareArtifact?.invoke(artifact) }
+                        )
+                        Spacer(Modifier.height(4.dp))
+                    }
+                }
+            }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ArtifactChip(
+    artifact: ArtifactUiModel,
+    onOpen: () -> Unit,
+    onShare: () -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(10.dp),
+        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.45f)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Default.Description,
+                contentDescription = null,
+                modifier = Modifier.size(14.dp),
+                tint = MaterialTheme.colorScheme.onSecondaryContainer
+            )
+            Spacer(Modifier.width(8.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    artifact.displayName,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+                val detail = buildString {
+                    artifact.mimeType?.takeIf { it.isNotBlank() }?.let { append(it) }
+                    artifact.sizeBytes?.let {
+                        if (isNotBlank()) append(" · ")
+                        append("${it / 1024}KB")
+                    }
+                }
+                if (detail.isNotBlank()) {
+                    Text(
+                        detail,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
+                    )
+                }
+            }
+            IconButton(onClick = onOpen, modifier = Modifier.size(24.dp)) {
+                Icon(Icons.Default.OpenInNew, null, modifier = Modifier.size(14.dp))
+            }
+            IconButton(onClick = onShare, modifier = Modifier.size(24.dp)) {
+                Icon(Icons.Default.Share, null, modifier = Modifier.size(14.dp))
             }
         }
     }

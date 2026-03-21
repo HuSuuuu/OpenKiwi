@@ -19,6 +19,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 private const val MAX_PARSE_LENGTH = 60_000
 
@@ -261,18 +263,30 @@ fun MarkdownText(
     style: TextStyle = MaterialTheme.typography.bodyLarge,
     color: Color = MaterialTheme.colorScheme.onSurface
 ) {
-    val stableKey = remember(markdown.length) {
+    val stableKey = remember(markdown) {
         if (markdown.length < 500) markdown
         else "${markdown.length}_${markdown.hashCode()}"
     }
 
-    val blocks = remember(stableKey) { parseBlocks(markdown) }
+    val blocks by produceState(initialValue = emptyList<MdBlock>(), key1 = stableKey) {
+        value = withContext(Dispatchers.Default) {
+            parseBlocks(markdown)
+        }
+    }
     val codeBackground = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
     val codeSurfaceColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
     val linkColor = MaterialTheme.colorScheme.primary
     val clipboardManager = LocalClipboardManager.current
 
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        if (blocks.isEmpty() && markdown.isNotBlank()) {
+            Text(
+                text = markdown.take(800),
+                style = style,
+                color = color.copy(alpha = 0.9f)
+            )
+            return@Column
+        }
         blocks.forEach { block ->
             when (block) {
                 is MdBlock.Heading -> {

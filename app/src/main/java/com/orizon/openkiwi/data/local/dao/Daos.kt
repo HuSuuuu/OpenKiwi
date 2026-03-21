@@ -50,6 +50,30 @@ interface MessageDao {
 }
 
 @Dao
+interface ArtifactDao {
+    @Query("SELECT * FROM artifacts ORDER BY createdAt DESC")
+    fun getAllArtifacts(): Flow<List<ArtifactEntity>>
+
+    @Query("SELECT * FROM artifacts WHERE sessionId = :sessionId ORDER BY createdAt DESC")
+    fun getArtifactsForSession(sessionId: String): Flow<List<ArtifactEntity>>
+
+    @Query("SELECT * FROM artifacts WHERE sessionId = :sessionId ORDER BY createdAt DESC")
+    suspend fun getArtifactsForSessionOnce(sessionId: String): List<ArtifactEntity>
+
+    @Insert
+    suspend fun insertArtifact(artifact: ArtifactEntity): Long
+
+    @Insert
+    suspend fun insertArtifacts(artifacts: List<ArtifactEntity>): List<Long>
+
+    @Query("UPDATE artifacts SET messageId = :messageId WHERE id IN (:artifactIds)")
+    suspend fun attachArtifactsToMessage(artifactIds: List<Long>, messageId: Long)
+
+    @Query("DELETE FROM artifacts WHERE sessionId = :sessionId")
+    suspend fun deleteArtifactsForSession(sessionId: String)
+}
+
+@Dao
 interface ModelConfigDao {
     @Query("SELECT * FROM model_configs ORDER BY name ASC")
     fun getAllConfigs(): Flow<List<ModelConfigEntity>>
@@ -209,4 +233,55 @@ interface AuditLogDao {
 
     @Query("DELETE FROM audit_logs WHERE timestamp < :before")
     suspend fun deleteLogsBefore(before: Long)
+}
+
+@Dao
+interface ScheduledTaskDao {
+    @Query("SELECT * FROM scheduled_tasks ORDER BY createdAt DESC")
+    fun observeAll(): Flow<List<ScheduledTaskEntity>>
+
+    @Query("SELECT * FROM scheduled_tasks ORDER BY createdAt DESC")
+    suspend fun getAllOnce(): List<ScheduledTaskEntity>
+
+    @Query("SELECT * FROM scheduled_tasks WHERE enabled = 1")
+    suspend fun getAllEnabled(): List<ScheduledTaskEntity>
+
+    @Query("SELECT * FROM scheduled_tasks WHERE id = :id")
+    suspend fun getById(id: String): ScheduledTaskEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(task: ScheduledTaskEntity)
+
+    @Update
+    suspend fun update(task: ScheduledTaskEntity)
+
+    @Delete
+    suspend fun delete(task: ScheduledTaskEntity)
+
+    @Query("UPDATE scheduled_tasks SET sessionId = :sessionId WHERE id = :id")
+    suspend fun updateSessionId(id: String, sessionId: String)
+
+    @Query("UPDATE scheduled_tasks SET lastRunAt = :time WHERE id = :id")
+    suspend fun updateLastRun(id: String, time: Long)
+}
+
+@Dao
+interface RagChunkDao {
+    @Query("DELETE FROM rag_chunks")
+    suspend fun clearAll()
+
+    @Query("DELETE FROM rag_chunks WHERE path = :path")
+    suspend fun deleteByPath(path: String)
+
+    @Insert
+    suspend fun insertChunks(chunks: List<RagChunkEntity>)
+
+    @Query(
+        """SELECT * FROM rag_chunks WHERE content LIKE '%' || :q || '%' COLLATE NOCASE 
+        OR path LIKE '%' || :q || '%' COLLATE NOCASE LIMIT :limit"""
+    )
+    suspend fun search(q: String, limit: Int = 24): List<RagChunkEntity>
+
+    @Query("SELECT COUNT(*) FROM rag_chunks")
+    suspend fun count(): Int
 }

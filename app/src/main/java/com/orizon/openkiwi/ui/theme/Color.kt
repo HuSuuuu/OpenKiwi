@@ -47,3 +47,13 @@ val md_theme_dark_outline = Color(0xFF3A3A3C) // iOS Dark Gray 4
 val md_theme_dark_error = Color(0xFFFF453A) // iOS Dark Red
 val md_theme_dark_onError = Color(0xFF000000)
 val md_theme_dark_errorContainer = Color(0xFF401010)
+
+// Lumina Design Colors (Light version)
+val LuminaBackground = Color(0xFFF5F5F7)
+val LuminaAccentGreen = Color(0xFF1DB954)
+val LuminaGlassDark = Color(0xCCFFFFFF) // rgba(255, 255, 255, 0.8)
+val LuminaGlassLight = Color(0x80FFFFFF) // rgba(255, 255, 255, 0.5)
+val LuminaGlassUser = Color(0xFFE5F1FF) // Light blue tint
+val LuminaGlassBorder = Color(0x1A000000) // rgba(0, 0, 0, 0.1)
+val LuminaGlassBorderHighlight = Color(0x33000000) // rgba(0, 0, 0, 0.2)
+

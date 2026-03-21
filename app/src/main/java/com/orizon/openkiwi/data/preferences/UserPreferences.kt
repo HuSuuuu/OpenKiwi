@@ -26,8 +26,17 @@ class UserPreferences(private val context: Context) {
         val KEY_FEISHU_APP_SECRET = stringPreferencesKey("feishu_app_secret")
         val KEY_FEISHU_VERIFICATION_TOKEN = stringPreferencesKey("feishu_verification_token")
         val KEY_FEISHU_ENCRYPT_KEY = stringPreferencesKey("feishu_encrypt_key")
+        val KEY_FEISHU_DIRECT_LONG_CONNECTION = booleanPreferencesKey("feishu_direct_long_connection")
         val KEY_NOTIFICATION_MODEL_ID = stringPreferencesKey("notification_model_id")
         val KEY_NOTIFICATION_PROCESSING = booleanPreferencesKey("notification_processing_enabled")
+        val KEY_FONT_FAMILY = stringPreferencesKey("font_family")
+        val KEY_ACCENT_COLOR = stringPreferencesKey("accent_color")
+        val KEY_VOICE_WAKE_ENABLED = booleanPreferencesKey("voice_wake_enabled")
+        val KEY_VOICE_WAKE_WORD = stringPreferencesKey("voice_wake_word")
+        val KEY_CLIPBOARD_MONITOR = booleanPreferencesKey("clipboard_monitor_enabled")
+        val KEY_NOTIF_AUTO_REPLY = booleanPreferencesKey("notif_auto_reply_enabled")
+        val KEY_NOTIF_AUTO_REPLY_TEMPLATE = stringPreferencesKey("notif_auto_reply_template")
+        val KEY_NOTIF_AUTO_REPLY_PACKAGES = stringPreferencesKey("notif_auto_reply_packages")
     }
 
     val setupCompleted: Flow<Boolean> = context.dataStore.data.map { it[KEY_SETUP_COMPLETED] ?: false }
@@ -42,8 +51,17 @@ class UserPreferences(private val context: Context) {
     val feishuAppSecret: Flow<String> = context.dataStore.data.map { it[KEY_FEISHU_APP_SECRET] ?: "" }
     val feishuVerificationToken: Flow<String> = context.dataStore.data.map { it[KEY_FEISHU_VERIFICATION_TOKEN] ?: "" }
     val feishuEncryptKey: Flow<String> = context.dataStore.data.map { it[KEY_FEISHU_ENCRYPT_KEY] ?: "" }
+    val feishuDirectLongConnection: Flow<Boolean> = context.dataStore.data.map { it[KEY_FEISHU_DIRECT_LONG_CONNECTION] ?: false }
     val notificationModelId: Flow<String> = context.dataStore.data.map { it[KEY_NOTIFICATION_MODEL_ID] ?: "" }
     val notificationProcessing: Flow<Boolean> = context.dataStore.data.map { it[KEY_NOTIFICATION_PROCESSING] ?: false }
+    val fontFamily: Flow<String> = context.dataStore.data.map { it[KEY_FONT_FAMILY] ?: "default" }
+    val accentColor: Flow<String> = context.dataStore.data.map { it[KEY_ACCENT_COLOR] ?: "green" }
+    val voiceWakeEnabled: Flow<Boolean> = context.dataStore.data.map { it[KEY_VOICE_WAKE_ENABLED] ?: false }
+    val voiceWakeWord: Flow<String> = context.dataStore.data.map { it[KEY_VOICE_WAKE_WORD] ?: "hey kiwi" }
+    val clipboardMonitorEnabled: Flow<Boolean> = context.dataStore.data.map { it[KEY_CLIPBOARD_MONITOR] ?: false }
+    val notifAutoReplyEnabled: Flow<Boolean> = context.dataStore.data.map { it[KEY_NOTIF_AUTO_REPLY] ?: false }
+    val notifAutoReplyTemplate: Flow<String> = context.dataStore.data.map { it[KEY_NOTIF_AUTO_REPLY_TEMPLATE] ?: "收到" }
+    val notifAutoReplyPackages: Flow<String> = context.dataStore.data.map { it[KEY_NOTIF_AUTO_REPLY_PACKAGES] ?: "" }
 
     suspend fun setThemeMode(mode: String) {
         context.dataStore.edit { it[KEY_THEME_MODE] = mode }
@@ -89,12 +107,48 @@ class UserPreferences(private val context: Context) {
         context.dataStore.edit { it[KEY_FEISHU_ENCRYPT_KEY] = key }
     }
 
+    suspend fun setFeishuDirectLongConnection(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_FEISHU_DIRECT_LONG_CONNECTION] = enabled }
+    }
+
     suspend fun setNotificationModelId(id: String) {
         context.dataStore.edit { it[KEY_NOTIFICATION_MODEL_ID] = id }
     }
 
     suspend fun setNotificationProcessing(enabled: Boolean) {
         context.dataStore.edit { it[KEY_NOTIFICATION_PROCESSING] = enabled }
+    }
+
+    suspend fun setFontFamily(font: String) {
+        context.dataStore.edit { it[KEY_FONT_FAMILY] = font }
+    }
+
+    suspend fun setAccentColor(color: String) {
+        context.dataStore.edit { it[KEY_ACCENT_COLOR] = color }
+    }
+
+    suspend fun setVoiceWakeEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_VOICE_WAKE_ENABLED] = enabled }
+    }
+
+    suspend fun setVoiceWakeWord(word: String) {
+        context.dataStore.edit { it[KEY_VOICE_WAKE_WORD] = word }
+    }
+
+    suspend fun setClipboardMonitorEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_CLIPBOARD_MONITOR] = enabled }
+    }
+
+    suspend fun setNotifAutoReplyEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_NOTIF_AUTO_REPLY] = enabled }
+    }
+
+    suspend fun setNotifAutoReplyTemplate(template: String) {
+        context.dataStore.edit { it[KEY_NOTIF_AUTO_REPLY_TEMPLATE] = template }
+    }
+
+    suspend fun setNotifAutoReplyPackages(csv: String) {
+        context.dataStore.edit { it[KEY_NOTIF_AUTO_REPLY_PACKAGES] = csv }
     }
 
     suspend fun getString(key: String): String {

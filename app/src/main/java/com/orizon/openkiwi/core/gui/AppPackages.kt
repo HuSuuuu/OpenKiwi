@@ -34,6 +34,7 @@ object AppPackages {
         "日历" to "com.android.calendar", "计算器" to "com.android.calculator2",
         "飞书" to "com.ss.android.lark", "钉钉" to "com.alibaba.android.rimet",
         "企业微信" to "com.tencent.wework", "WPS" to "cn.wps.moffice_eng",
+        "豆包" to "com.larus.nova", "Doubao" to "com.larus.nova",
         "番茄小说" to "com.dragon.read", "今日头条" to "com.ss.android.article.news",
         "头条" to "com.ss.android.article.news", "腾讯新闻" to "com.tencent.news",
         "第五人格" to "com.netease.dwrg", "王者荣耀" to "com.tencent.tmgp.sgame",

@@ -4,57 +4,104 @@ import android.app.Activity
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.*
+import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.font.FontFamily
 import androidx.core.view.WindowCompat
 
-private val LightColorScheme = lightColorScheme(
-    primary = md_theme_light_primary,
-    onPrimary = md_theme_light_onPrimary,
-    primaryContainer = md_theme_light_primaryContainer,
-    onPrimaryContainer = md_theme_light_onPrimaryContainer,
-    secondary = md_theme_light_secondary,
-    onSecondary = md_theme_light_onSecondary,
-    secondaryContainer = md_theme_light_secondaryContainer,
-    onSecondaryContainer = md_theme_light_onSecondaryContainer,
+val LocalAccentColor = compositionLocalOf { LuminaAccentGreen }
+
+object AccentColors {
+    val green = Color(0xFF1DB954)
+    val blue = Color(0xFF007AFF)
+    val purple = Color(0xFF8B5CF6)
+    val orange = Color(0xFFFF9500)
+    val pink = Color(0xFFFF2D55)
+    val cyan = Color(0xFF00C7BE)
+    val red = Color(0xFFFF3B30)
+    val indigo = Color(0xFF5856D6)
+
+    val all = mapOf(
+        "green" to green, "blue" to blue, "purple" to purple,
+        "orange" to orange, "pink" to pink, "cyan" to cyan,
+        "red" to red, "indigo" to indigo
+    )
+    val labels = mapOf(
+        "green" to "绿", "blue" to "蓝", "purple" to "紫",
+        "orange" to "橙", "pink" to "粉", "cyan" to "青",
+        "red" to "红", "indigo" to "靛蓝"
+    )
+
+    fun fromKey(key: String): Color = all[key] ?: green
+}
+
+object AppFonts {
+    val all = mapOf(
+        "default" to FontFamily.Default,
+        "serif" to FontFamily.Serif,
+        "monospace" to FontFamily.Monospace,
+        "sans" to FontFamily.SansSerif,
+        "cursive" to FontFamily.Cursive
+    )
+    val labels = mapOf(
+        "default" to "默认", "serif" to "宋体/衬线",
+        "monospace" to "等宽", "sans" to "无衬线",
+        "cursive" to "手写体"
+    )
+
+    fun fromKey(key: String): FontFamily = all[key] ?: FontFamily.Default
+}
+
+private fun buildLightScheme(accent: Color) = lightColorScheme(
+    primary = accent,
+    onPrimary = Color.White,
+    primaryContainer = LuminaGlassUser,
+    onPrimaryContainer = Color.Black,
+    secondary = accent,
+    onSecondary = Color.White,
+    secondaryContainer = LuminaGlassDark,
+    onSecondaryContainer = Color.Black,
     tertiary = md_theme_light_tertiary,
     onTertiary = md_theme_light_onTertiary,
     tertiaryContainer = md_theme_light_tertiaryContainer,
     onTertiaryContainer = md_theme_light_onTertiaryContainer,
-    background = md_theme_light_background,
-    onBackground = md_theme_light_onBackground,
-    surface = md_theme_light_surface,
-    onSurface = md_theme_light_onSurface,
-    surfaceVariant = md_theme_light_surfaceVariant,
-    onSurfaceVariant = md_theme_light_onSurfaceVariant,
-    outline = md_theme_light_outline,
+    background = LuminaBackground,
+    onBackground = Color.Black,
+    surface = LuminaBackground,
+    onSurface = Color.Black,
+    surfaceVariant = LuminaGlassDark,
+    onSurfaceVariant = Color.Black,
+    outline = LuminaGlassBorder,
     error = md_theme_light_error,
     onError = md_theme_light_onError,
     errorContainer = md_theme_light_errorContainer
 )
 
-private val DarkColorScheme = darkColorScheme(
-    primary = md_theme_dark_primary,
-    onPrimary = md_theme_dark_onPrimary,
-    primaryContainer = md_theme_dark_primaryContainer,
-    onPrimaryContainer = md_theme_dark_onPrimaryContainer,
-    secondary = md_theme_dark_secondary,
-    onSecondary = md_theme_dark_onSecondary,
-    secondaryContainer = md_theme_dark_secondaryContainer,
-    onSecondaryContainer = md_theme_dark_onSecondaryContainer,
+private fun buildDarkScheme(accent: Color) = darkColorScheme(
+    primary = accent,
+    onPrimary = Color.White,
+    primaryContainer = LuminaGlassUser,
+    onPrimaryContainer = Color.Black,
+    secondary = accent,
+    onSecondary = Color.White,
+    secondaryContainer = LuminaGlassDark,
+    onSecondaryContainer = Color.Black,
     tertiary = md_theme_dark_tertiary,
     onTertiary = md_theme_dark_onTertiary,
     tertiaryContainer = md_theme_dark_tertiaryContainer,
     onTertiaryContainer = md_theme_dark_onTertiaryContainer,
-    background = md_theme_dark_background,
-    onBackground = md_theme_dark_onBackground,
-    surface = md_theme_dark_surface,
-    onSurface = md_theme_dark_onSurface,
-    surfaceVariant = md_theme_dark_surfaceVariant,
-    onSurfaceVariant = md_theme_dark_onSurfaceVariant,
-    outline = md_theme_dark_outline,
+    background = LuminaBackground,
+    onBackground = Color.Black,
+    surface = LuminaBackground,
+    onSurface = Color.Black,
+    surfaceVariant = LuminaGlassDark,
+    onSurfaceVariant = Color.Black,
+    outline = LuminaGlassBorder,
     error = md_theme_dark_error,
     onError = md_theme_dark_onError,
     errorContainer = md_theme_dark_errorContainer
@@ -64,29 +111,38 @@ private val DarkColorScheme = darkColorScheme(
 fun OpenKiwiTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     dynamicColor: Boolean = false,
+    accentColorKey: String = "green",
+    fontFamilyKey: String = "default",
     content: @Composable () -> Unit
 ) {
+    val accent = AccentColors.fromKey(accentColorKey)
+    val fontFamily = AppFonts.fromKey(fontFamilyKey)
+
     val colorScheme = when {
         dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             val context = LocalContext.current
             if (darkTheme) dynamicDarkColorScheme(context)
             else dynamicLightColorScheme(context)
         }
-        darkTheme -> DarkColorScheme
-        else -> LightColorScheme
+        darkTheme -> buildDarkScheme(accent)
+        else -> buildLightScheme(accent)
     }
 
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
-            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
+            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = true
         }
     }
 
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = Typography,
-        content = content
-    )
+    CompositionLocalProvider(
+        LocalAccentColor provides accent
+    ) {
+        MaterialTheme(
+            colorScheme = colorScheme,
+            typography = buildTypography(fontFamily),
+            content = content
+        )
+    }
 }

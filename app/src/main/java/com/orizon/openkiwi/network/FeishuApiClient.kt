@@ -1,5 +1,6 @@
 package com.orizon.openkiwi.network
 
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
@@ -19,6 +20,9 @@ data class FeishuConfig(
 )
 
 class FeishuApiClient(private val httpClient: OkHttpClient) {
+    companion object {
+        private const val TAG = "FeishuApiClient"
+    }
 
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true; explicitNulls = false }
     private var tenantAccessToken: String? = null
@@ -26,6 +30,8 @@ class FeishuApiClient(private val httpClient: OkHttpClient) {
 
     suspend fun authenticate(config: FeishuConfig): Result<String> = withContext(Dispatchers.IO) {
         runCatching {
+            val start = System.currentTimeMillis()
+            Log.i(TAG, "authenticate start on ${Thread.currentThread().name}")
             this@FeishuApiClient.config = config
             val body = buildJsonObject {
                 put("app_id", config.appId)
@@ -35,12 +41,24 @@ class FeishuApiClient(private val httpClient: OkHttpClient) {
                 .url("${config.baseUrl}/auth/v3/tenant_access_token/internal")
                 .post(body.toRequestBody("application/json".toMediaType()))
                 .build()
-            val response = httpClient.newCall(request).execute()
-            val respBody = response.body?.string() ?: throw Exception("Empty response")
+            val respBody = httpClient.newCall(request).execute().use { response ->
+                val code = response.code
+                val respText = response.body?.string() ?: throw Exception("Empty response")
+                if (!response.isSuccessful) {
+                    throw Exception("HTTP $code: ${respText.take(300)}")
+                }
+                respText
+            }
             val token = json.decodeFromString<FeishuTokenResponse>(respBody)
             if (token.code != 0) throw Exception("Feishu auth failed: ${token.msg}")
             tenantAccessToken = token.tenantAccessToken
+            Log.i(
+                TAG,
+                "authenticate success in ${System.currentTimeMillis() - start}ms, tokenLen=${token.tenantAccessToken.length}"
+            )
             token.tenantAccessToken
+        }.onFailure {
+            Log.e(TAG, "authenticate failed on ${Thread.currentThread().name}: ${it.message}", it)
         }
     }
 
@@ -61,6 +79,8 @@ class FeishuApiClient(private val httpClient: OkHttpClient) {
     suspend fun sendMessage(receiveIdType: String, receiveId: String, msgType: String, content: String): Result<String> =
         withContext(Dispatchers.IO) {
             runCatching {
+                val start = System.currentTimeMillis()
+                Log.i(TAG, "sendMessage start on ${Thread.currentThread().name}, type=$msgType")
                 ensureToken()
                 val body = buildJsonObject {
                     put("receive_id", receiveId)
@@ -70,14 +90,25 @@ class FeishuApiClient(private val httpClient: OkHttpClient) {
                 val request = authRequest("${baseUrl()}/im/v1/messages?receive_id_type=$receiveIdType")
                     .post(body.toRequestBody("application/json".toMediaType()))
                     .build()
-                val response = httpClient.newCall(request).execute()
-                response.body?.string() ?: "sent"
+                val result = httpClient.newCall(request).execute().use { response ->
+                    val responseText = response.body?.string() ?: "sent"
+                    if (!response.isSuccessful) {
+                        throw Exception("HTTP ${response.code}: ${responseText.take(300)}")
+                    }
+                    responseText
+                }
+                Log.i(TAG, "sendMessage done in ${System.currentTimeMillis() - start}ms")
+                result
+            }.onFailure {
+                Log.e(TAG, "sendMessage failed: ${it.message}", it)
             }
         }
 
     suspend fun replyMessage(messageId: String, msgType: String, content: String): Result<String> =
         withContext(Dispatchers.IO) {
             runCatching {
+                val start = System.currentTimeMillis()
+                Log.i(TAG, "replyMessage start on ${Thread.currentThread().name}, messageId=${messageId.takeLast(6)}")
                 ensureToken()
                 val body = buildJsonObject {
                     put("msg_type", msgType)
@@ -86,8 +117,17 @@ class FeishuApiClient(private val httpClient: OkHttpClient) {
                 val request = authRequest("${baseUrl()}/im/v1/messages/$messageId/reply")
                     .post(body.toRequestBody("application/json".toMediaType()))
                     .build()
-                val response = httpClient.newCall(request).execute()
-                response.body?.string() ?: "replied"
+                val result = httpClient.newCall(request).execute().use { response ->
+                    val responseText = response.body?.string() ?: "replied"
+                    if (!response.isSuccessful) {
+                        throw Exception("HTTP ${response.code}: ${responseText.take(300)}")
+                    }
+                    responseText
+                }
+                Log.i(TAG, "replyMessage done in ${System.currentTimeMillis() - start}ms")
+                result
+            }.onFailure {
+                Log.e(TAG, "replyMessage failed: ${it.message}", it)
             }
         }
 
@@ -100,8 +140,13 @@ class FeishuApiClient(private val httpClient: OkHttpClient) {
                     if (!pageToken.isNullOrBlank()) append("&page_token=$pageToken")
                 }
                 val request = authRequest(url).get().build()
-                val response = httpClient.newCall(request).execute()
-                response.body?.string() ?: "[]"
+                httpClient.newCall(request).execute().use { response ->
+                    val responseText = response.body?.string() ?: "[]"
+                    if (!response.isSuccessful) {
+                        throw Exception("HTTP ${response.code}: ${responseText.take(300)}")
+                    }
+                    responseText
+                }
             }
         }
 
@@ -114,8 +159,13 @@ class FeishuApiClient(private val httpClient: OkHttpClient) {
                     if (!pageToken.isNullOrBlank()) append("&page_token=$pageToken")
                 }
                 val request = authRequest(url).get().build()
-                val response = httpClient.newCall(request).execute()
-                response.body?.string() ?: "[]"
+                httpClient.newCall(request).execute().use { response ->
+                    val responseText = response.body?.string() ?: "[]"
+                    if (!response.isSuccessful) {
+                        throw Exception("HTTP ${response.code}: ${responseText.take(300)}")
+                    }
+                    responseText
+                }
             }
         }
 
@@ -124,8 +174,13 @@ class FeishuApiClient(private val httpClient: OkHttpClient) {
             runCatching {
                 ensureToken()
                 val request = authRequest("${baseUrl()}/im/v1/chats/$chatId").get().build()
-                val response = httpClient.newCall(request).execute()
-                response.body?.string() ?: "{}"
+                httpClient.newCall(request).execute().use { response ->
+                    val responseText = response.body?.string() ?: "{}"
+                    if (!response.isSuccessful) {
+                        throw Exception("HTTP ${response.code}: ${responseText.take(300)}")
+                    }
+                    responseText
+                }
             }
         }
 
@@ -140,8 +195,13 @@ class FeishuApiClient(private val httpClient: OkHttpClient) {
                 val request = authRequest("${baseUrl()}/im/v1/chats")
                     .post(body.toRequestBody("application/json".toMediaType()))
                     .build()
-                val response = httpClient.newCall(request).execute()
-                response.body?.string() ?: "{}"
+                httpClient.newCall(request).execute().use { response ->
+                    val responseText = response.body?.string() ?: "{}"
+                    if (!response.isSuccessful) {
+                        throw Exception("HTTP ${response.code}: ${responseText.take(300)}")
+                    }
+                    responseText
+                }
             }
         }
 
@@ -151,8 +211,13 @@ class FeishuApiClient(private val httpClient: OkHttpClient) {
                 ensureToken()
                 val request = authRequest("${baseUrl()}/contact/v3/users/$userId?user_id_type=$userIdType")
                     .get().build()
-                val response = httpClient.newCall(request).execute()
-                response.body?.string() ?: "{}"
+                httpClient.newCall(request).execute().use { response ->
+                    val responseText = response.body?.string() ?: "{}"
+                    if (!response.isSuccessful) {
+                        throw Exception("HTTP ${response.code}: ${responseText.take(300)}")
+                    }
+                    responseText
+                }
             }
         }
 

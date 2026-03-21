@@ -3,6 +3,9 @@ package com.orizon.openkiwi.network
 import android.content.Context
 import android.net.wifi.WifiManager
 import android.util.Base64
+import android.os.Environment
+import java.io.File
+import org.json.JSONObject
 import com.orizon.openkiwi.core.agent.AgentEngine
 import com.orizon.openkiwi.data.repository.ChatRepository
 import com.orizon.openkiwi.data.repository.ModelRepository
@@ -27,7 +30,8 @@ class CompanionServer(
     private val modelRepository: ModelRepository,
     private val feishuApiClient: FeishuApiClient? = null,
     private val userPreferences: com.orizon.openkiwi.data.preferences.UserPreferences? = null,
-    private val port: Int = 8765
+    val port: Int = 8765,
+    val feishuEventHandler: FeishuEventHandler = FeishuEventHandler(agentEngine, chatRepository, feishuApiClient)
 ) {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     private val isRunning = AtomicBoolean(false)
@@ -35,16 +39,45 @@ class CompanionServer(
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val wsClients = ConcurrentHashMap<String, WebSocketClient>()
     private var currentSessionId: String? = null
+    private val pendingCodeResults = ConcurrentHashMap<String, kotlinx.coroutines.CompletableDeferred<String>>()
+
+    fun hasConnectedClients(): Boolean = wsClients.isNotEmpty()
+
+    suspend fun executeOnPC(code: String, language: String, timeoutMs: Long = 30000): String? {
+        val client = wsClients.values.firstOrNull() ?: return null
+        val requestId = java.util.UUID.randomUUID().toString()
+        val deferred = kotlinx.coroutines.CompletableDeferred<String>()
+        pendingCodeResults[requestId] = deferred
+
+        val codeJson = kotlinx.serialization.json.JsonPrimitive(code)
+        val msg = """{"type":"code_execute","content":$codeJson,"sessionId":"","language":"$language","timeout":${timeoutMs / 1000},"request_id":"$requestId"}"""
+        client.send(msg)
+
+        return try {
+            kotlinx.coroutines.withTimeout(timeoutMs + 5000) {
+                deferred.await()
+            }
+        } catch (_: Exception) {
+            null
+        } finally {
+            pendingCodeResults.remove(requestId)
+        }
+    }
 
     fun start() {
         if (isRunning.getAndSet(true)) return
         scope.launch {
-            serverSocket = ServerSocket(port)
-            while (isRunning.get()) {
-                runCatching {
-                    val client = serverSocket?.accept() ?: return@launch
-                    launch { handleClient(client) }
+            try {
+                serverSocket = ServerSocket(port)
+                while (isRunning.get()) {
+                    runCatching {
+                        val client = serverSocket?.accept() ?: return@launch
+                        launch { handleClient(client) }
+                    }
                 }
+            } catch (t: Throwable) {
+                android.util.Log.e("CompanionServer", "Failed to start server on port $port", t)
+                isRunning.set(false)
             }
         }
     }
@@ -125,9 +158,8 @@ class CompanionServer(
         output.flush()
     }
 
-    private val feishuMessageIds = java.util.concurrent.ConcurrentHashMap<String, Long>()
-
     private suspend fun handleFeishuEvent(output: BufferedOutputStream, body: String) {
+        val start = System.currentTimeMillis()
         val jsonObj = runCatching {
             kotlinx.serialization.json.Json.parseToJsonElement(body) as? kotlinx.serialization.json.JsonObject
         }.getOrNull()
@@ -152,77 +184,17 @@ class CompanionServer(
         val event = jsonObj["event"] as? kotlinx.serialization.json.JsonObject ?: return
 
         if (eventType == "im.message.receive_v1") {
-            scope.launch {
-                handleFeishuMessage(event)
-            }
+            val msgStart = System.currentTimeMillis()
+            feishuEventHandler.handleIncomingEventAsync(event)
+            android.util.Log.i(
+                "CompanionServer",
+                "Feishu message queued in ${System.currentTimeMillis() - msgStart}ms"
+            )
         }
-    }
-
-    private suspend fun handleFeishuMessage(event: kotlinx.serialization.json.JsonObject) {
-        val message = event["message"] as? kotlinx.serialization.json.JsonObject ?: return
-        val sender = event["sender"] as? kotlinx.serialization.json.JsonObject
-
-        val messageId = message["message_id"]?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content } ?: return
-        val chatId = message["chat_id"]?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content } ?: return
-        val msgType = message["message_type"]?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }
-        val contentStr = message["content"]?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content } ?: return
-
-        val now = System.currentTimeMillis()
-        feishuMessageIds[messageId]?.let { if (now - it < 60_000) return }
-        feishuMessageIds[messageId] = now
-        if (feishuMessageIds.size > 500) {
-            val cutoff = now - 120_000
-            feishuMessageIds.entries.removeAll { it.value < cutoff }
-        }
-
-        val userText = if (msgType == "text") {
-            val contentJson = runCatching {
-                kotlinx.serialization.json.Json.parseToJsonElement(contentStr) as? kotlinx.serialization.json.JsonObject
-            }.getOrNull()
-            contentJson?.get("text")?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content } ?: contentStr
-        } else {
-            "[$msgType 消息]"
-        }
-
-        if (userText.isBlank()) return
-
-        val senderName = sender?.get("sender_id")?.let { senderIdObj ->
-            (senderIdObj as? kotlinx.serialization.json.JsonObject)?.get("open_id")?.let {
-                (it as? kotlinx.serialization.json.JsonPrimitive)?.content
-            }
-        } ?: "unknown"
-
-        android.util.Log.i("CompanionServer", "Feishu msg from $senderName in $chatId: $userText")
-
-        try {
-            val sessionId = ensureFeishuSession(chatId)
-            val sb = StringBuilder()
-            agentEngine.processMessage(sessionId, userText).collect { chunk ->
-                if (!chunk.startsWith("§T§") && !chunk.startsWith("\n[Calling tool:") && !chunk.startsWith("[Tool result:")) {
-                    sb.append(chunk)
-                }
-            }
-            val replyText = sb.toString().trim()
-            if (replyText.isNotBlank() && feishuApiClient != null) {
-                val content = """{"text":"${replyText.replace("\"", "\\\"").replace("\n", "\\n")}"}"""
-                feishuApiClient.replyMessage(messageId, "text", content)
-            }
-        } catch (e: Exception) {
-            android.util.Log.e("CompanionServer", "Feishu reply error", e)
-            feishuApiClient?.runCatching {
-                val errContent = """{"text":"处理消息时出错: ${e.message?.take(100)?.replace("\"", "")}"}"""
-                replyMessage(messageId, "text", errContent)
-            }
-        }
-    }
-
-    private val feishuSessions = ConcurrentHashMap<String, String>()
-
-    private suspend fun ensureFeishuSession(chatId: String): String {
-        feishuSessions[chatId]?.let { return it }
-        val sessionId = chatRepository.createSession(title = "飞书: ${chatId.takeLast(8)}")
-        feishuSessions[chatId] = sessionId
-        return sessionId
+        android.util.Log.i(
+            "CompanionServer",
+            "Feishu event acked in ${System.currentTimeMillis() - start}ms, type=$eventType"
+        )
     }
 
     private fun sendHttpResponse(output: BufferedOutputStream, code: Int, body: String) {
@@ -273,20 +245,37 @@ class CompanionServer(
     }
 
     private suspend fun handleWsMessage(clientId: String, text: String) {
-        val msg = runCatching { json.decodeFromString(WsMessage.serializer(), text) }.getOrNull() ?: return
         val client = wsClients[clientId] ?: return
+        val root = runCatching {
+            kotlinx.serialization.json.Json.parseToJsonElement(text) as? kotlinx.serialization.json.JsonObject
+        }.getOrNull()
+        val typePrim = root?.get("type")?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }
+        if (typePrim == "file_upload") {
+            handleFileUpload(client, root)
+            return
+        }
+        if (typePrim == "file_download") {
+            handleFileDownload(client, root)
+            return
+        }
+
+        val msg = runCatching { json.decodeFromString(WsMessage.serializer(), text) }.getOrNull() ?: return
 
         when (msg.type) {
-            "chat" -> {
+            "chat", "chat_stream" -> {
                 if (msg.content.isBlank()) return
                 val sessionId = ensureSession()
                 client.send(json.encodeToString(WsMessage.serializer(), WsMessage("thinking", "", sessionId)))
                 val sb = StringBuilder()
                 agentEngine.processMessage(sessionId, msg.content).collect { chunk ->
                     sb.append(chunk)
-                    client.send(json.encodeToString(WsMessage.serializer(), WsMessage("stream", chunk, sessionId)))
+                    val streamJson = json.encodeToString(WsMessage.serializer(), WsMessage("stream", chunk, sessionId))
+                    client.send(streamJson)
+                    client.send(json.encodeToString(WsMessage.serializer(), WsMessage("chat_stream", chunk, sessionId)))
                 }
-                client.send(json.encodeToString(WsMessage.serializer(), WsMessage("done", sb.toString(), sessionId)))
+                val full = sb.toString()
+                client.send(json.encodeToString(WsMessage.serializer(), WsMessage("done", full, sessionId)))
+                client.send(json.encodeToString(WsMessage.serializer(), WsMessage("chat_end", full, sessionId)))
             }
             "terminal" -> {
                 if (msg.content.isBlank()) return
@@ -317,10 +306,95 @@ class CompanionServer(
                         WsMessage("session_list", "[$list]")))
                 }
             }
+            "code_result" -> {
+                val requestId = runCatching {
+                    val extra = kotlinx.serialization.json.Json.parseToJsonElement(text) as? kotlinx.serialization.json.JsonObject
+                    extra?.get("request_id")?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }
+                }.getOrNull() ?: ""
+                pendingCodeResults[requestId]?.complete(msg.content)
+            }
             "ping" -> {
                 client.send(json.encodeToString(WsMessage.serializer(), WsMessage("pong", "")))
             }
         }
+    }
+
+    private fun handleFileUpload(client: WebSocketClient, root: kotlinx.serialization.json.JsonObject) {
+        scope.launch {
+            val reqId = root["request_id"]?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }.orEmpty()
+            val name = root["filename"]?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content } ?: "upload.bin"
+            val b64 = root["data"]?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content } ?: ""
+            val safeName = name.replace(Regex("[^a-zA-Z0-9._-]"), "_").take(120)
+            val result = runCatching {
+                val bytes = Base64.decode(b64, Base64.DEFAULT)
+                val dir = File(context.filesDir, "companion_uploads").apply { mkdirs() }
+                val out = File(dir, safeName)
+                out.writeBytes(bytes)
+                JSONObject().apply {
+                    if (reqId.isNotEmpty()) put("request_id", reqId)
+                    put("ok", true)
+                    put("path", out.absolutePath)
+                    put("bytes", bytes.size)
+                }.toString()
+            }.getOrElse { e ->
+                JSONObject().apply {
+                    if (reqId.isNotEmpty()) put("request_id", reqId)
+                    put("ok", false)
+                    put("error", e.message?.take(200) ?: "error")
+                }.toString()
+            }
+            client.send(json.encodeToString(WsMessage.serializer(), WsMessage("file_data", result, "")))
+        }
+    }
+
+    private fun handleFileDownload(client: WebSocketClient, root: kotlinx.serialization.json.JsonObject) {
+        scope.launch {
+            val reqId = root["request_id"]?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }.orEmpty()
+            val path = root["path"]?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content } ?: ""
+            val f = safeFileForCompanion(path)
+            val result = when {
+                f == null || !f.exists() || !f.isFile ->
+                    JSONObject().apply {
+                        if (reqId.isNotEmpty()) put("request_id", reqId)
+                        put("ok", false)
+                        put("error", "invalid_path_or_missing")
+                    }.toString()
+                f.length() > 900_000 ->
+                    JSONObject().apply {
+                        if (reqId.isNotEmpty()) put("request_id", reqId)
+                        put("ok", false)
+                        put("error", "file_too_large")
+                    }.toString()
+                else -> {
+                    val b64 = Base64.encodeToString(f.readBytes(), Base64.NO_WRAP)
+                    JSONObject().apply {
+                        if (reqId.isNotEmpty()) put("request_id", reqId)
+                        put("ok", true)
+                        put("filename", f.name)
+                        put("data", b64)
+                    }.toString()
+                }
+            }
+            client.send(json.encodeToString(WsMessage.serializer(), WsMessage("file_data", result, "")))
+        }
+    }
+
+    private fun safeFileForCompanion(path: String): File? {
+        if (path.isBlank()) return null
+        val f = try {
+            File(path).canonicalFile
+        } catch (_: Exception) {
+            return null
+        }
+        val extRoot = runCatching { Environment.getExternalStorageDirectory().canonicalFile }.getOrNull()
+        val dl = runCatching { Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS).canonicalFile }.getOrNull()
+        val doc = runCatching { Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS).canonicalFile }.getOrNull()
+        val appFiles = context.filesDir.canonicalFile
+        val p = f.canonicalPath
+        val allowed = listOfNotNull(extRoot, dl, doc, appFiles).any { root ->
+            p.startsWith(root.path)
+        }
+        return if (allowed) f else null
     }
 
     private fun buildDeviceInfoJson(): String {

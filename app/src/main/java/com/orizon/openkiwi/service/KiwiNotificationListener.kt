@@ -40,6 +40,7 @@ class KiwiNotificationListener : NotificationListenerService() {
         _notifications.value = enrichedList
 
         runCatching { OpenKiwiApp.instance.container.notificationProcessor.process(enrichedInfo) }
+        runCatching { OpenKiwiApp.instance.container.autoReplyManager.maybeReplyAsync(sbn, enrichedInfo) }
     }
 
     override fun onNotificationRemoved(sbn: StatusBarNotification?) {

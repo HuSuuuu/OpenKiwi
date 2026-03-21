@@ -17,6 +17,8 @@ class MessageType(str, Enum):
     FILE_DATA = "file_data"
     DEVICE_INFO = "device_info"
     DEVICE_INFO_RESPONSE = "device_info_response"
+    CODE_EXECUTE = "code_execute"
+    CODE_RESULT = "code_result"
     PING = "ping"
     PONG = "pong"
     ERROR = "error"

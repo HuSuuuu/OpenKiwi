@@ -336,6 +336,7 @@ data class ParsedMessage(
 private val thinkRegex = Regex("<think>([\\s\\S]*?)</think>")
 
 fun parseMessageContent(content: String): ParsedMessage {
+    val content = com.orizon.openkiwi.util.VendorResponseSanitizer.stripPseudoFunctionCallBlocks(content)
     val thinkMatch = thinkRegex.find(content)
     val thinking = thinkMatch?.groupValues?.get(1)?.trim() ?: ""
     val contentWithoutThink = if (thinkMatch != null) content.replace(thinkRegex, "").trim() else content

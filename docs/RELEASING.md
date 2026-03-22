@@ -6,50 +6,50 @@
 
 - 已安装 [GitHub CLI](https://cli.github.com/)：`gh`，并完成 `gh auth login`
 - 或对仓库有 **Maintainer/Admin** 权限，使用网页上传
-- 本地已有待发布的 APK（例如根目录 `OpenKiwi321.apk`，或 `app/build/outputs/apk/debug/OpenKiwi321.apk`）
+- 本地已有待发布的 APK（例如根目录 `OpenKiwi322.apk`，或 `app/build/outputs/apk/debug/app-debug.apk`）
 
 ## 方式一：命令行（推荐）
 
 在项目根目录执行（按你的实际文件路径修改）：
 
 ```powershell
-# Windows PowerShell — 示例：发布 v3.2.1，附带 OpenKiwi321.apk
-$tag = "v3.2.1"
-$apk = ".\OpenKiwi321.apk"   # 或 .\app\build\outputs\apk\debug\OpenKiwi321.apk
+# Windows PowerShell — 示例：发布 v3.2.2，附带 OpenKiwi322.apk
+$tag = "v3.2.2"
+$apk = ".\OpenKiwi322.apk"   # 或 .\app\build\outputs\apk\debug\app-debug.apk
 
 gh release create $tag $apk `
   --repo HuSuuuu/OpenKiwi `
-  --title "OpenKiwi 3.2.1" `
-  --notes-file .\docs\RELEASE_NOTES_v3.2.1.md `
+  --title "OpenKiwi 3.2.2" `
+  --notes-file .\docs\RELEASE_NOTES_v3.2.2.md `
   --latest
 ```
 
 若 APK 不在当前目录：
 
 ```powershell
-gh release create v3.2.1 "C:\path\to\OpenKiwi321.apk" --repo HuSuuuu/OpenKiwi --title "OpenKiwi 3.2.1" --notes-file .\docs\RELEASE_NOTES_v3.2.1.md
+gh release create v3.2.2 "C:\path\to\OpenKiwi322.apk" --repo HuSuuuu/OpenKiwi --title "OpenKiwi 3.2.2" --notes-file .\docs\RELEASE_NOTES_v3.2.2.md
 ```
 
 **指定附件在 Release 上的显示名**（可选）：
 
 ```powershell
-gh release create v3.2.1 "OpenKiwi321.apk#OpenKiwi-3.2.1-debug.apk" --repo HuSuuuu/OpenKiwi --title "OpenKiwi 3.2.1" --notes-file .\docs\RELEASE_NOTES_v3.2.1.md
+gh release create v3.2.2 "OpenKiwi322.apk#OpenKiwi-3.2.2-debug.apk" --repo HuSuuuu/OpenKiwi --title "OpenKiwi 3.2.2" --notes-file .\docs\RELEASE_NOTES_v3.2.2.md
 ```
 
 ### 仅更新已有 Release 的资产
 
 ```powershell
-gh release upload v3.2.1 OpenKiwi321.apk --repo HuSuuuu/OpenKiwi --clobber
+gh release upload v3.2.2 OpenKiwi322.apk --repo HuSuuuu/OpenKiwi --clobber
 ```
 
 ## 方式二：GitHub 网页
 
 1. 打开：<https://github.com/HuSuuuu/OpenKiwi/releases>
 2. 点击 **Draft a new release**
-3. **Choose a tag**：新建标签，例如 `v3.2.1`
-4. **Release title**：例如 `OpenKiwi 3.2.1`
-5. 描述：复制 `docs/RELEASE_NOTES_v3.2.1.md` 内容，或自行编写
-6. **Attach binaries**：拖拽 `OpenKiwi321.apk`
+3. **Choose a tag**：新建标签，例如 `v3.2.2`
+4. **Release title**：例如 `OpenKiwi 3.2.2`
+5. 描述：复制 `docs/RELEASE_NOTES_v3.2.2.md` 内容，或自行编写
+6. **Attach binaries**：拖拽 `OpenKiwi322.apk`
 7. 勾选 **Set as the latest release**（若适用）
 8. 发布 **Publish release**
 
@@ -58,7 +58,7 @@ gh release upload v3.2.1 OpenKiwi321.apk --repo HuSuuuu/OpenKiwi --clobber
 发版后请在 `README.md` 顶部的「下载」区确认：
 
 - 指向最新 **Releases** 链接
-- 写明当前推荐版本号与文件名（如 `OpenKiwi321.apk`）
+- 写明当前推荐版本号与文件名（如 `OpenKiwi322.apk`）
 
 ## 签名与正式渠道（可选）
 
@@ -70,7 +70,7 @@ gh release upload v3.2.1 OpenKiwi321.apk --repo HuSuuuu/OpenKiwi --clobber
 生成 SHA256（PowerShell）：
 
 ```powershell
-Get-FileHash .\OpenKiwi321.apk -Algorithm SHA256
+Get-FileHash .\OpenKiwi322.apk -Algorithm SHA256
 ```
 
 将结果写入 Release 说明。

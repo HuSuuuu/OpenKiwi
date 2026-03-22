@@ -50,6 +50,7 @@ fun SettingsScreen(
 
     var themeMode by remember { mutableStateOf("system") }
     var enableStreaming by remember { mutableStateOf(true) }
+    var dynamicToolRetrieval by remember { mutableStateOf(false) }
     var confirmDangerous by remember { mutableStateOf(true) }
     var enableAuditLog by remember { mutableStateOf(true) }
     var maxContextMessages by remember { mutableIntStateOf(50) }
@@ -61,6 +62,9 @@ fun SettingsScreen(
     }
     LaunchedEffect(Unit) {
         prefs.enableStreaming.collect { enableStreaming = it }
+    }
+    LaunchedEffect(Unit) {
+        prefs.dynamicToolRetrieval.collect { dynamicToolRetrieval = it }
     }
     LaunchedEffect(Unit) {
         prefs.confirmDangerousOps.collect { confirmDangerous = it }
@@ -132,6 +136,16 @@ fun SettingsScreen(
                     subtitle = "实时显示生成内容",
                     checked = enableStreaming,
                     onCheckedChange = { enableStreaming = it; scope.launch { prefs.setEnableStreaming(it) } }
+                )
+                SettingsSwitchItem(
+                    icon = Icons.Outlined.ManageSearch,
+                    title = "工具检索后动态加载",
+                    subtitle = "用本机 BM25 按对话选一批工具定义再请求模型，省 token；关则每次下发全部已启用工具",
+                    checked = dynamicToolRetrieval,
+                    onCheckedChange = {
+                        dynamicToolRetrieval = it
+                        scope.launch { prefs.setDynamicToolRetrieval(it) }
+                    }
                 )
             }
 

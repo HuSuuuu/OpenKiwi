@@ -81,7 +81,9 @@ class FeishuEventHandler(
                     sb.append(chunk)
                 }
             }
-            val replyText = sb.toString().trim()
+            val replyText = com.orizon.openkiwi.util.VendorResponseSanitizer
+                .stripPseudoFunctionCallBlocks(sb.toString())
+                .trim()
             if (replyText.isNotBlank() && feishuApiClient != null) {
                 val content = buildJsonObject { put("text", replyText) }.toString()
                 feishuApiClient.replyMessage(messageId, "text", content)

@@ -6,16 +6,22 @@ import com.orizon.openkiwi.core.skill.SkillLearner
 import com.orizon.openkiwi.core.tool.ToolArtifact
 import com.orizon.openkiwi.core.tool.ToolExecutor
 import com.orizon.openkiwi.core.tool.ToolRegistry
+import com.orizon.openkiwi.core.tool.ToolRetriever
+import com.orizon.openkiwi.data.preferences.UserPreferences
 import com.orizon.openkiwi.data.repository.ChatRepository
 import com.orizon.openkiwi.data.repository.ModelRepository
 import com.orizon.openkiwi.network.OpenAIApiClient
+import com.orizon.openkiwi.util.VendorResponseSanitizer
 import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonPrimitive
 
 class AgentEngine(
@@ -26,7 +32,8 @@ class AgentEngine(
     private val chatRepository: ChatRepository,
     private val modelRepository: ModelRepository,
     private val smartModelDispatcher: SmartModelDispatcher? = null,
-    private val skillLearner: SkillLearner? = null
+    private val skillLearner: SkillLearner? = null,
+    private val userPreferences: UserPreferences? = null
 ) {
     private val json = Json { ignoreUnknownKeys = true }
     private val _agentState = MutableStateFlow(AgentState())
@@ -40,8 +47,7 @@ class AgentEngine(
         userMessage: String,
         modelConfig: ModelConfig? = null,
         imageUrl: String? = null,
-        videoUrl: String? = null,
-        userText: String? = null
+        videoUrl: String? = null
     ): Flow<String> = flow {
         _agentState.value = _agentState.value.copy(isProcessing = true, error = null)
 
@@ -91,12 +97,10 @@ class AgentEngine(
             messages, config.maxTokens / 2
         )
 
-        val intentSource = userText ?: userMessage
         val parasiticOn = ParasiticQueryTool.enabled
-        val needsTools = config.supportsTools && (parasiticOn || needsToolUse(intentSource))
-        val toolSpecs = if (needsTools) toolRegistry.toToolSpecs() else null
+        val toolSpecs = resolveAllToolSpecs(config, userMessage, messages, parasiticOn)
 
-        if (parasiticOn && needsTools) {
+        if (parasiticOn && !toolSpecs.isNullOrEmpty() && !config.webSearchExclusive) {
             val hint = ChatMessage(
                 role = ChatRole.SYSTEM,
                 content = "用户已开启寄生模式。请使用 parasitic_query 工具将用户的问题发送给豆包，获取回复后转达给用户。"
@@ -131,6 +135,7 @@ class AgentEngine(
                 if (config.supportsStreaming) {
                     val fullContent = StringBuilder()
                     val thinkingContent = StringBuilder()
+                    val contentStreamScrubber = VendorResponseSanitizer.StreamScrubber()
                     var toolCallsDetected = false
                     var streamUsage: Usage? = null
                     data class ToolCallAccumulator(var id: String, var name: String, val arguments: StringBuilder = StringBuilder())
@@ -150,7 +155,8 @@ class AgentEngine(
                                     fullContent.append(content)
                                     globalFullContent.clear()
                                     globalFullContent.append(fullContent)
-                                    emit(content)
+                                    val vis = contentStreamScrubber.deltaForCurrentBuffer(fullContent)
+                                    if (vis.isNotEmpty()) emit(vis)
                                 }
                                 choice.delta?.toolCalls?.forEach { tc ->
                                     toolCallsDetected = true
@@ -179,7 +185,8 @@ class AgentEngine(
 
                         val assistantMsg = ChatMessage(
                             role = ChatRole.ASSISTANT,
-                            content = fullContent.toString().takeIf { it.isNotBlank() },
+                            content = VendorResponseSanitizer.stripPseudoFunctionCallBlocks(fullContent.toString())
+                                .takeIf { it.isNotBlank() },
                             toolCalls = toolCalls
                         )
                         iterationMessages.add(assistantMsg)
@@ -215,14 +222,15 @@ class AgentEngine(
                         continue
                     }
 
+                    val toolLogSnapshotStream = globalToolLog.toString()
                     globalFullContent.clear()
                     globalThinkingContent.clear()
                     globalToolLog.clear()
 
                     val savedContent = buildString {
-                        if (globalToolLog.isNotBlank()) append(globalToolLog)
+                        if (toolLogSnapshotStream.isNotBlank()) append(toolLogSnapshotStream)
                         if (thinkingContent.isNotBlank()) append("<think>\n$thinkingContent\n</think>\n\n")
-                        append(fullContent)
+                        append(VendorResponseSanitizer.stripPseudoFunctionCallBlocks(fullContent.toString()))
                     }
                     val messageId = chatRepository.addMessage(
                         sessionId,
@@ -288,16 +296,17 @@ class AgentEngine(
                         globalThinkingContent.append(reasoning)
                         emit("$THINKING_MARKER$reasoning")
                     }
-                    emit(content)
+                    emit(VendorResponseSanitizer.stripPseudoFunctionCallBlocks(content))
 
+                    val toolLogSnapshotNs = globalToolLog.toString()
                     globalFullContent.clear()
                     globalThinkingContent.clear()
                     globalToolLog.clear()
 
                     val savedContent = buildString {
-                        if (globalToolLog.isNotBlank()) append(globalToolLog)
+                        if (toolLogSnapshotNs.isNotBlank()) append(toolLogSnapshotNs)
                         if (!reasoning.isNullOrBlank()) append("<think>\n$reasoning\n</think>\n\n")
-                        append(content)
+                        append(VendorResponseSanitizer.stripPseudoFunctionCallBlocks(content))
                     }
                     val messageId = chatRepository.addMessage(
                         sessionId,
@@ -349,7 +358,7 @@ class AgentEngine(
             val savedContent = buildString {
                 if (toolLog.isNotBlank()) append(toolLog)
                 if (thinking.isNotBlank()) append("<think>\n$thinking\n</think>\n\n")
-                append(content)
+                append(VendorResponseSanitizer.stripPseudoFunctionCallBlocks(content.toString()))
                 if (isNotBlank()) append("\n\n[生成中断]")
             }
             if (savedContent.isNotBlank()) {
@@ -375,37 +384,91 @@ class AgentEngine(
         _agentState.value = _agentState.value.copy(isProcessing = false)
     }
 
+    /**
+     * 合并服务商原生工具（如方舟 `web_search`）与本地 function 工具列表。
+     */
+    private suspend fun resolveAllToolSpecs(
+        config: ModelConfig,
+        userMessage: String,
+        contextMessages: List<ChatMessage>,
+        parasiticOn: Boolean
+    ): List<ToolSpec>? {
+        val webPart = if (config.includeWebSearchTool) {
+            listOf(ToolSpec.volcanoWebSearchToolSpec())
+        } else emptyList()
+
+        val skipLocalFunctions = config.webSearchExclusive && config.includeWebSearchTool
+        val fnPart = if (config.supportsTools && !skipLocalFunctions) {
+            resolveFunctionToolSpecs(config, userMessage, contextMessages, parasiticOn).orEmpty()
+        } else emptyList()
+
+        return (webPart + fnPart).takeIf { it.isNotEmpty() }
+    }
+
+    /**
+     * 全量或 BM25 检索子集。检索过窄时回退全量，避免漏工具。
+     */
+    private suspend fun resolveFunctionToolSpecs(
+        config: ModelConfig,
+        userMessage: String,
+        contextMessages: List<ChatMessage>,
+        parasiticOn: Boolean
+    ): List<ToolSpec>? {
+        // 方舟内置联网与本地 WebSearchTool 同名 web_search，合并会重复；开启方舟联网时去掉本地同名工具
+        val enabledTools = toolRegistry.getEnabledTools().filter { tool ->
+            !(config.includeWebSearchTool && tool.definition.name == ToolSpec.VOLCANO_WEB_SEARCH_TOOL_NAME)
+        }
+        if (enabledTools.isEmpty()) return null
+
+        val useDynamic = userPreferences?.dynamicToolRetrieval?.first() ?: false
+        val fullSpecs = toolRegistry.toToolSpecs(enabledTools)
+
+        if (!useDynamic || enabledTools.size <= DYNAMIC_TOOL_MIN_REGISTRY_SIZE) {
+            return fullSpecs.takeIf { it.isNotEmpty() }
+        }
+
+        val query = buildToolRetrievalQuery(userMessage, contextMessages)
+        val pinNames = buildSet {
+            add("memory")
+            if (parasiticOn) add("parasitic_query")
+        }
+        val selected = ToolRetriever.selectTools(
+            tools = enabledTools,
+            query = query,
+            topK = 24,
+            pinNames = pinNames
+        )
+        val fallbackMin = minOf(10, (enabledTools.size + 1) / 2).coerceAtLeast(6)
+        val finalTools = if (selected.size < fallbackMin) enabledTools else selected
+        return toolRegistry.toToolSpecs(finalTools).takeIf { it.isNotEmpty() }
+    }
+
+    private fun buildToolRetrievalQuery(userMessage: String, contextMessages: List<ChatMessage>): String {
+        val sb = StringBuilder(userMessage)
+        contextMessages.takeLast(12).forEach { m ->
+            if (m.role == ChatRole.USER || m.role == ChatRole.ASSISTANT) {
+                m.content?.take(500)?.let { sb.append("\n").append(it) }
+            }
+        }
+        return sb.toString()
+    }
+
     private fun parseToolArguments(arguments: String): Map<String, Any?> {
         return runCatching {
             val jsonObj = json.decodeFromString<JsonObject>(arguments)
-            jsonObj.mapValues { (_, value) -> value.jsonPrimitive.content }
+            jsonObj.mapValues { (_, value) -> jsonArgumentToKotlin(value) }
         }.getOrDefault(emptyMap())
     }
 
-    private fun needsToolUse(text: String): Boolean {
-        val trimmed = text.trim()
-        if (trimmed.isEmpty()) return false
-
-        val actionKeywords = listOf(
-            "打开", "启动", "运行", "执行", "安装", "卸载", "删除",
-            "发送", "发短信", "打电话", "拨打", "呼叫",
-            "搜索", "搜一下", "查一下", "查找", "查询",
-            "下载", "上传", "传输",
-            "拍照", "录音", "录像", "截图", "截屏",
-            "设置", "修改设置", "调整",
-            "创建文件", "写入文件", "保存到", "新建",
-            "连接", "SSH", "蓝牙", "WiFi",
-            "导航到", "定位", "位置",
-            "提醒", "闹钟", "日历",
-            "复制", "粘贴", "剪切",
-            "寄生", "豆包", "问豆包", "让豆包",
-            "open", "launch", "run", "execute", "install", "delete",
-            "send", "call", "search", "download", "upload",
-            "take photo", "record", "screenshot",
-            "navigate", "connect", "parasitic", "doubao"
-        )
-        val lower = trimmed.lowercase()
-        return actionKeywords.any { lower.contains(it) }
+    /** 部分模型会对 code 等字段返回非 string 的 JSON；避免 jsonPrimitive 崩溃并丢参 */
+    private fun jsonArgumentToKotlin(value: JsonElement): String = when (value) {
+        is JsonPrimitive -> value.content
+        is JsonArray -> value.toString()
+        is JsonObject -> value.toString()
+    }
+    companion object {
+        /** 工具数量较少时检索收益小，直接全量下发 */
+        private const val DYNAMIC_TOOL_MIN_REGISTRY_SIZE = 14
     }
 }
 

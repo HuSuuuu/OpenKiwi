@@ -310,6 +310,47 @@ private fun ModelEditScreen(
                 FilterChip(selected = model.isDefault, onClick = { onModelChange(model.copy(isDefault = !model.isDefault)) }, label = { Text("默认") }, shape = RoundedCornerShape(8.dp))
                 FilterChip(selected = model.isSmallModel, onClick = { onModelChange(model.copy(isSmallModel = !model.isSmallModel)) }, label = { Text("小模型") }, shape = RoundedCornerShape(8.dp))
             }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(
+                    selected = model.includeWebSearchTool,
+                    onClick = {
+                        val on = !model.includeWebSearchTool
+                        onModelChange(
+                            model.copy(
+                                includeWebSearchTool = on,
+                                webSearchExclusive = if (!on) false else model.webSearchExclusive
+                            )
+                        )
+                    },
+                    label = { Text("联网 web_search") },
+                    shape = RoundedCornerShape(8.dp)
+                )
+                FilterChip(
+                    selected = model.webSearchExclusive,
+                    onClick = {
+                        onModelChange(
+                            model.copy(
+                                webSearchExclusive = !model.webSearchExclusive,
+                                includeWebSearchTool = true
+                            )
+                        )
+                    },
+                    enabled = model.includeWebSearchTool,
+                    label = { Text("仅联网") },
+                    shape = RoundedCornerShape(8.dp)
+                )
+            }
+            if (model.includeWebSearchTool) {
+                Text(
+                    buildString {
+                        appendLine("• 当前聊天走 Chat Completions：方舟要求联网项为 type=function + name=web_search，与文档里 Responses 的 {\"type\":\"web_search\",\"max_keyword\":…} 不是同一种请求。")
+                        appendLine("• 文档中的 max_keyword、sources、user_location、limit 等仅适用于 Responses API（/responses）；本应用尚未接入该接口，无法在聊天里传这些字段。")
+                        appendLine("• 请在方舟控制台开通「联网内容插件」。与本地 web_search 工具冲突时请开「仅联网」。")
+                    }.trim(),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f)
+                )
+            }
 
             Text("思考模式", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

@@ -18,7 +18,7 @@ OpenKiwi 是运行在 **Android** 上的开源 AI Agent：不仅是聊天，还�
 
 | 方式 | 说明 |
 |------|------|
-| **GitHub Releases** | [**Latest Release**](https://github.com/HuSuuuu/OpenKiwi/releases/latest) 下载附件 APK（当前推荐包名示例：**OpenKiwi321.apk**） |
+| **GitHub Releases** | [**Latest Release**](https://github.com/HuSuuuu/OpenKiwi/releases/latest) 下载附件 APK（当前推荐包名示例：**OpenKiwi322.apk**） |
 | 自行编译 | 见下文 [从源码构建](#从源码构建) |
 
 > **注意**：Release 上的 APK 为预编译调试包示例；生产环境请自行 **release 签名** 构建。仓库通过 `.gitignore` 忽略 `*.apk`，安装包请始终挂在 **Releases 资产**，不要强行提交进 Git。
@@ -109,23 +109,23 @@ OpenKiwi 是运行在 **Android** 上的开源 AI Agent：不仅是聊天，还�
 # app/build/outputs/apk/debug/app-debug.apk
 ```
 
-若你本地将输出重命名为 `OpenKiwi321.apk`，可直接用于 [发布到 GitHub Releases](#发布到-github-releases)。
+若你本地将输出重命名为 `OpenKiwi322.apk`，可直接用于 [发布到 GitHub Releases](#发布到-github-releases)。
 
 ---
 
 ## 发布到 GitHub Releases
 
-维护者将 **OpenKiwi321.apk**（或任意版本 APK）上传到 Release 的完整步骤见：
+维护者将 **OpenKiwi322.apk**（或任意版本 APK）上传到 Release 的完整步骤见：
 
 **[docs/RELEASING.md](docs/RELEASING.md)**
 
 快捷方式（需已安装 [`gh`](https://cli.github.com/) 且 `gh auth login`）：
 
 ```powershell
-.\scripts\release-github.ps1 -Tag v3.2.1 -ApkPath .\OpenKiwi321.apk
+.\scripts\release-github.ps1 -Tag v3.2.2 -ApkPath .\OpenKiwi322.apk
 ```
 
-发版说明模板：**[docs/RELEASE_NOTES_v3.2.1.md](docs/RELEASE_NOTES_v3.2.1.md)**（发布前可更新 SHA256 与文案）。
+发版说明模板：**[docs/RELEASE_NOTES_v3.2.2.md](docs/RELEASE_NOTES_v3.2.2.md)**（发布前可更新 SHA256 与文案；不传 `-NotesFile` 时脚本会按 tag 自动选 `docs/RELEASE_NOTES_v{version}.md`）。
 
 ---
 

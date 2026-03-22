@@ -1,5 +1,6 @@
 package com.orizon.openkiwi.core.tool.builtin
 
+import com.orizon.openkiwi.core.code.ShellPythonHint
 import com.orizon.openkiwi.core.tool.*
 import com.orizon.openkiwi.service.overlay.TerminalOverlayService
 import kotlinx.coroutines.Dispatchers
@@ -13,6 +14,7 @@ class ShellCommandTool : Tool {
     override val definition = ToolDefinition(
         name = "shell_command",
         description = """Execute a shell command locally on Android. Non-root but with expanded PATH (/system/bin, /system/xbin, /vendor/bin, /sbin).
+There is NO python/python3 in this shell — do NOT run `python` here; use code_execution with language=python (embedded Chaquopy).
 Available: ls, cat, echo, grep, find, wc, sort, head, tail, cp, mv, mkdir, rm, touch, chmod, chown, ln,
 date, uptime, whoami, id, uname, hostname, df, du, stat, file,
 ps, top -n1, kill, nice, nohup,
@@ -20,7 +22,7 @@ ifconfig, ip, ping, traceroute, netstat, ss, nslookup, curl, wget,
 getprop, setprop, dumpsys, pm (list/install/uninstall/clear), am (start/broadcast/force-stop),
 content query/insert/update/delete, settings get/put/list, input (text/tap/swipe/keyevent),
 logcat -d, dmesg, service list, cmd, toybox, toolbox.
-For Python scripts, use code_execute with language=python (runs locally via embedded CPython).""",
+For Python scripts, use code_execution (or code_execute) with language=python (runs locally via embedded CPython).""",
         category = ToolCategory.CODE_EXECUTION.name,
         permissionLevel = PermissionLevel.DANGEROUS.name,
         parameters = mapOf(
@@ -42,6 +44,14 @@ For Python scripts, use code_execute with language=python (runs locally via embe
         if (blockedCommands.any { command.contains(it) }) {
             return@withContext ToolResult(
                 toolName = definition.name, success = false, output = "", error = "Command blocked for safety"
+            )
+        }
+        if (ShellPythonHint.commandInvokesSystemPython(command)) {
+            return@withContext ToolResult(
+                toolName = definition.name,
+                success = false,
+                output = "",
+                error = ShellPythonHint.USE_CODE_EXECUTION_ZH
             )
         }
 

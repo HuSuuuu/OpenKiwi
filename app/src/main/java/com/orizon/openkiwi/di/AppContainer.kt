@@ -167,7 +167,7 @@ class AppContainer(context: Context) {
         // Memory
         register(MemoryTool(memoryManager))
 
-        // Code execution
+        // Code execution（canonical: code_execution；code_execute 由 ToolExecutor 映射）
         register(CodeExecutionTool(codeSandbox))
 
         // Cross-device
@@ -202,7 +202,8 @@ class AppContainer(context: Context) {
         chatRepository = chatRepository,
         modelRepository = modelRepository,
         smartModelDispatcher = smartModelDispatcher,
-        skillLearner = skillLearner
+        skillLearner = skillLearner,
+        userPreferences = userPreferences
     )
 
     val communicationBus = AgentCommunicationBus()
@@ -249,6 +250,7 @@ class AppContainer(context: Context) {
 
         toolRegistry.register(SubAgentTool(subAgentManager))
         toolRegistry.register(SkillTool(skillManager, skillExecutor))
+        toolRegistry.register(ScheduledTaskTool(database.scheduledTaskDao(), scheduleManager))
         toolRegistry.register(GuiAgentTool(guiAgent))
         toolRegistry.register(ParasiticQueryTool(guiAgent))
         toolRegistry.register(AppReplyBotTool(guiAgent))

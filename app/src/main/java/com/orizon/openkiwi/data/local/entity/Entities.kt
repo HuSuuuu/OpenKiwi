@@ -62,7 +62,9 @@ data class ModelConfigEntity(
     val supportsStreaming: Boolean = true,
     val sceneTagsJson: String = "[]",
     val reasoningEffort: String = "low",
-    val isSmallModel: Boolean = false
+    val isSmallModel: Boolean = false,
+    val includeWebSearchTool: Boolean = false,
+    val webSearchExclusive: Boolean = false
 )
 
 @Entity(tableName = "memories")

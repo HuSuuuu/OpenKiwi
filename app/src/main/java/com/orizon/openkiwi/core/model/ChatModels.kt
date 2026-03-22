@@ -73,11 +73,34 @@ data class StreamOptions(
     @SerialName("include_usage") val includeUsage: Boolean = true
 )
 
+/**
+ * OpenAI / 方舟兼容的 tools 项。方舟 **Chat Completions** 要求 `tools[].type` 必须为 **function**；
+ * 联网能力通过 `function.name` = [VOLCANO_WEB_SEARCH_TOOL_NAME] 声明（非 Responses API 里的 `type: web_search`）。
+ */
 @Serializable
 data class ToolSpec(
-    val type: String = "function",
+    val type: String = TYPE_FUNCTION,
     val function: ToolFunction
-)
+) {
+    companion object {
+        const val TYPE_FUNCTION = "function"
+        /** 方舟 chat/completions 内置联网工具在 function.name 中的标识 */
+        const val VOLCANO_WEB_SEARCH_TOOL_NAME = "web_search"
+
+        /**
+         * 方舟 **chat/completions** 下的联网声明（非 Responses 里的 `type:web_search` 对象）。
+         * `max_keyword` / `sources` 等仅见于 Responses API，见 [com.orizon.openkiwi.network.ArkWebSearchBodies]。
+         */
+        fun volcanoWebSearchToolSpec(): ToolSpec = ToolSpec(
+            type = TYPE_FUNCTION,
+            function = ToolFunction(
+                name = VOLCANO_WEB_SEARCH_TOOL_NAME,
+                description = "Search the public web for up-to-date information (Ark plugin).",
+                parameters = ToolParameters()
+            )
+        )
+    }
+}
 
 @Serializable
 data class ToolFunction(

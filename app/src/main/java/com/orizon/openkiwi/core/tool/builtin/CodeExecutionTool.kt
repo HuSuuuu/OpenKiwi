@@ -9,7 +9,7 @@ import java.io.File
 class CodeExecutionTool(private val sandbox: CodeSandbox) : Tool {
 
     override val definition = ToolDefinition(
-        name = "code_execute",
+        name = "code_execution",
         description = """Execute code in a sandboxed environment. Returns stdout, stderr, and exit code.
 - python: Runs LOCALLY on the phone via embedded CPython (full standard library + requests, beautifulsoup4). No PC needed.
 - shell: Runs locally via Android sh (ls, cat, grep, find, curl, wget, pm, am, dumpsys, settings, getprop, input, etc.)
@@ -28,7 +28,7 @@ class CodeExecutionTool(private val sandbox: CodeSandbox) : Tool {
     )
 
     override suspend fun execute(params: Map<String, Any?>): ToolResult {
-        val code = params["code"]?.toString() ?: return ToolResult("code_execute", false, "", "Missing code")
+        val code = params["code"]?.toString() ?: return ToolResult(definition.name, false, "", "Missing code")
         val language = params["language"]?.toString() ?: "shell"
         val timeoutMs = params["timeout_ms"]?.toString()?.toLongOrNull() ?: 30_000L
 
@@ -62,7 +62,7 @@ class CodeExecutionTool(private val sandbox: CodeSandbox) : Tool {
         }
 
         return ToolResult(
-            "code_execute",
+            definition.name,
             result.exitCode == 0,
             output,
             executionTimeMs = result.executionTimeMs,

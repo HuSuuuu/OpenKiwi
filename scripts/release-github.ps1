@@ -4,7 +4,7 @@
   Create a GitHub Release and upload OpenKiwi APK (requires: gh auth login)
 
 .EXAMPLE
-  .\scripts\release-github.ps1 -Tag v3.2.1 -ApkPath .\OpenKiwi321.apk
+  .\scripts\release-github.ps1 -Tag v3.2.2 -ApkPath .\OpenKiwi322.apk
 #>
 param(
     [Parameter(Mandatory = $true)]
@@ -17,7 +17,7 @@ param(
 
     [string] $Title = "",
 
-    [string] $NotesFile = "docs\RELEASE_NOTES_v3.2.1.md"
+    [string] $NotesFile = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -35,9 +35,15 @@ if (-not $Title) {
     $Title = "OpenKiwi $Tag"
 }
 
+if (-not $NotesFile) {
+    $ver = $Tag -replace '^[vV]+', ''
+    $NotesFile = "docs\RELEASE_NOTES_v$ver.md"
+}
+
 $notesArg = @()
-if (Test-Path -LiteralPath (Join-Path $root $NotesFile)) {
-    $notesArg = @("--notes-file", (Join-Path $root $NotesFile))
+$notesJoined = Join-Path $root $NotesFile
+if (Test-Path -LiteralPath $notesJoined) {
+    $notesArg = @("--notes-file", $notesJoined)
 } elseif (Test-Path -LiteralPath $NotesFile) {
     $notesArg = @("--notes-file", (Resolve-Path $NotesFile))
 }

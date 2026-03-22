@@ -14,7 +14,6 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.booleanOrNull
 import java.io.File
-import java.io.StringWriter
 
 data class SandboxConfig(
     val allowNetwork: Boolean = false,
@@ -51,11 +50,6 @@ class CodeSandbox(private val context: Context) {
         File(context.filesDir, "sandbox").also { it.mkdirs() }
     }
 
-    private val pythonAvailable: Boolean
-        get() = try {
-            Python.isStarted()
-        } catch (_: Throwable) { false }
-
     @Synchronized
     private fun ensurePythonStarted(): Boolean {
         if (Python.isStarted()) return true
@@ -74,6 +68,11 @@ class CodeSandbox(private val context: Context) {
     ): ExecutionResult = withContext(Dispatchers.IO) {
         if (BLOCKED_COMMANDS.any { command.contains(it, ignoreCase = true) }) {
             return@withContext ExecutionResult(-1, "", "Blocked: dangerous command", 0)
+        }
+        if (ShellPythonHint.commandInvokesSystemPython(command)) {
+            return@withContext ExecutionResult(
+                -1, "", ShellPythonHint.USE_CODE_EXECUTION_ZH, 0
+            )
         }
 
         val workDir = config.workDir?.let { File(it) } ?: sandboxDir
@@ -136,32 +135,40 @@ class CodeSandbox(private val context: Context) {
     ): ExecutionResult = withContext(Dispatchers.IO) {
         val startTime = System.currentTimeMillis()
         try {
-            if (!ensurePythonStarted()) {
-                return@withContext ExecutionResult(
-                    -1, "", "本地 Python 初始化失败，请稍后重试。",
-                    System.currentTimeMillis() - startTime
+            withTimeout(config.maxExecutionTimeMs) {
+                if (!ensurePythonStarted()) {
+                    return@withTimeout ExecutionResult(
+                        -1, "", ShellPythonHint.CHAQUOPY_INIT_FAILED_ZH,
+                        System.currentTimeMillis() - startTime
+                    )
+                }
+                val py = Python.getInstance()
+                val execModule = py.getModule("kiwi_exec")
+                val resultMap = execModule.callAttr("run_code", code)
+
+                val stdout = resultMap.callAttr("get", "stdout", "").toString()
+                    .take(config.maxOutputBytes)
+                val stderr = resultMap.callAttr("get", "stderr", "").toString()
+                    .take(config.maxOutputBytes)
+                val exitCode = resultMap.callAttr("get", "exit_code", 0)
+                    .toString().toIntOrNull() ?: -1
+                val elapsed = System.currentTimeMillis() - startTime
+
+                Log.i(TAG, "Local Python done: exit=$exitCode, stdout=${stdout.length}b, stderr=${stderr.length}b")
+
+                ExecutionResult(
+                    exitCode = exitCode,
+                    stdout = stdout,
+                    stderr = stderr,
+                    executionTimeMs = elapsed,
+                    truncated = stdout.length >= config.maxOutputBytes
                 )
             }
-            val py = Python.getInstance()
-            val execModule = py.getModule("kiwi_exec")
-            val resultMap = execModule.callAttr("run_code", code)
-
-            val stdout = resultMap.callAttr("get", "stdout", "").toString()
-                .take(config.maxOutputBytes)
-            val stderr = resultMap.callAttr("get", "stderr", "").toString()
-                .take(config.maxOutputBytes)
-            val exitCode = resultMap.callAttr("get", "exit_code", 0)
-                .toString().toIntOrNull() ?: -1
-            val elapsed = System.currentTimeMillis() - startTime
-
-            Log.i(TAG, "Local Python done: exit=$exitCode, stdout=${stdout.length}b, stderr=${stderr.length}b")
-
+        } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
             ExecutionResult(
-                exitCode = exitCode,
-                stdout = stdout,
-                stderr = stderr,
-                executionTimeMs = elapsed,
-                truncated = stdout.length >= config.maxOutputBytes
+                -1, "",
+                "本地 Python 执行超时（${config.maxExecutionTimeMs}ms）",
+                System.currentTimeMillis() - startTime
             )
         } catch (e: Exception) {
             Log.e(TAG, "Local Python execution failed", e)
@@ -179,16 +186,24 @@ class CodeSandbox(private val context: Context) {
             "sh", "bash", "shell" -> executeShell(code, config)
 
             "python", "python3", "py" -> {
-                if (pythonAvailable) {
-                    executePythonLocal(code, config)
-                } else {
+                // 不可先用 Python.isStarted() 判断：冷启动时尚未 start，会误判为不可用。
+                // executePythonLocal 内会 ensurePythonStarted() 按需启动 Chaquopy。
+                val local = executePythonLocal(code, config)
+                val initFailed = local.exitCode == -1 && (
+                    local.stderr.contains("初始化失败", ignoreCase = true) ||
+                        local.stderr.contains("启动失败", ignoreCase = true) ||
+                        local.stderr.contains("Chaquopy", ignoreCase = true) ||
+                        local.stderr.contains("Failed to initialize", ignoreCase = true)
+                    )
+                if (initFailed) {
                     val pc = companionServer
                     if (pc != null && pc.hasConnectedClients()) {
                         executeOnCompanionPC(code, language, config)
                     } else {
-                        ExecutionResult(-1, "",
-                            "本地 Python 未就绪，且未连接 Companion PC。", 0)
+                        local
                     }
+                } else {
+                    local
                 }
             }
 

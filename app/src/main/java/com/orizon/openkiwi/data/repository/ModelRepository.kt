@@ -71,7 +71,9 @@ class ModelRepository(private val modelConfigDao: ModelConfigDao) {
             json.decodeFromString<List<String>>(sceneTagsJson)
         }.getOrDefault(emptyList()),
         reasoningEffort = reasoningEffort,
-        isSmallModel = isSmallModel
+        isSmallModel = isSmallModel,
+        includeWebSearchTool = includeWebSearchTool,
+        webSearchExclusive = webSearchExclusive
     )
 
     private fun ModelConfig.toEntity() = ModelConfigEntity(
@@ -98,6 +100,8 @@ class ModelRepository(private val modelConfigDao: ModelConfigDao) {
             sceneTags
         ),
         reasoningEffort = reasoningEffort,
-        isSmallModel = isSmallModel
+        isSmallModel = isSmallModel,
+        includeWebSearchTool = includeWebSearchTool,
+        webSearchExclusive = webSearchExclusive
     )
 }

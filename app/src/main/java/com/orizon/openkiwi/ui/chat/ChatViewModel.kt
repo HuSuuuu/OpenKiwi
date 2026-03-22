@@ -252,8 +252,7 @@ class ChatViewModel(
 
                 agentEngine.processMessage(sessionId, finalContent,
                     imageUrl = imageBase64,
-                    videoUrl = videoBase64,
-                    userText = content
+                    videoUrl = videoBase64
                 ).collect { chunk ->
                     val callingMatch = callingRegex.find(chunk)
                     val resultMatch = resultRegex.find(chunk)
@@ -281,6 +280,13 @@ class ChatViewModel(
                         }
                         else -> {
                             textBuilder.append(chunk)
+                            val cleaned = com.orizon.openkiwi.util.VendorResponseSanitizer.stripPseudoFunctionCallBlocks(
+                                textBuilder.toString()
+                            )
+                            if (cleaned.length != textBuilder.length) {
+                                textBuilder.clear()
+                                textBuilder.append(cleaned)
+                            }
                             val fullText = textBuilder.toString()
 
                             if (thinkingBuilder.isNotEmpty()) {

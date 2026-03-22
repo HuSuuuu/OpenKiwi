@@ -11,13 +11,23 @@ class ToolExecutor(
     var requireConfirmationForDangerous: Boolean = true
     var onConfirmationRequired: (suspend (Tool, Map<String, Any?>) -> Boolean)? = null
 
+    companion object {
+        /**
+         * 系统提示写的是 code_execution，历史上工具名为 code_execute；模型任一名称都应能路由到同一实现。
+         */
+        private val TOOL_NAME_ALIASES: Map<String, String> = mapOf(
+            "code_execute" to "code_execution"
+        )
+    }
+
     suspend fun execute(
         toolName: String,
         params: Map<String, Any?>,
         sessionId: String? = null,
         timeoutMs: Long? = null
     ): ToolResult {
-        val tool = registry.getTool(toolName)
+        val canonical = TOOL_NAME_ALIASES[toolName] ?: toolName
+        val tool = registry.getTool(canonical) ?: registry.getTool(toolName)
             ?: return ToolResult(
                 toolName = toolName,
                 success = false,
@@ -62,7 +72,7 @@ class ToolExecutor(
             AuditLogEntity(
                 actor = "agent",
                 actionType = "TOOL_CALL",
-                actionDetail = "$toolName(${params.entries.joinToString { "${it.key}=${it.value}" }})",
+                actionDetail = "$canonical(${params.entries.joinToString { "${it.key}=${it.value}" }})",
                 result = if (result.success) "SUCCESS" else "FAILED: ${result.error}",
                 permissionUsed = tool.definition.permissionLevel,
                 sessionId = sessionId

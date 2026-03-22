@@ -28,25 +28,30 @@ class ToolRegistry {
     fun getToolsByPermissionLevel(level: PermissionLevel): List<Tool> =
         tools.values.filter { it.definition.permissionLevel == level.name }
 
-    fun toToolSpecs(): List<ToolSpec> = getEnabledTools().map { tool ->
-        val def = tool.definition
-        ToolSpec(
-            type = "function",
-            function = ToolFunction(
-                name = def.name,
-                description = def.description,
-                parameters = ToolParameters(
-                    type = "object",
-                    properties = def.parameters.mapValues { (_, param) ->
-                        ToolProperty(
-                            type = param.type,
-                            description = param.description,
-                            enum = param.enumValues
-                        )
-                    },
-                    required = def.requiredParams
-                )
+    fun toToolSpecs(): List<ToolSpec> = getEnabledTools().map { it.toToolSpec() }
+
+    /** OpenAI function specs for an explicit subset (e.g. after retrieval). */
+    fun toToolSpecs(tools: List<Tool>): List<ToolSpec> = tools.map { it.toToolSpec() }
+}
+
+private fun Tool.toToolSpec(): ToolSpec {
+    val def = definition
+    return ToolSpec(
+        type = ToolSpec.TYPE_FUNCTION,
+        function = ToolFunction(
+            name = def.name,
+            description = def.description,
+            parameters = ToolParameters(
+                type = "object",
+                properties = def.parameters.mapValues { (_, param) ->
+                    ToolProperty(
+                        type = param.type,
+                        description = param.description,
+                        enum = param.enumValues
+                    )
+                },
+                required = def.requiredParams
             )
         )
-    }
+    )
 }

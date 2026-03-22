@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 import okhttp3.*
@@ -101,7 +102,21 @@ class OpenAIApiClient(
             request.reasoningEffort?.let { append(""","reasoning_effort":"$it"""") }
             if (stream) append(""","stream_options":{"include_usage":true}""")
         }
-        return """{"model":"${request.model}","messages":[$messagesJson],"stream":$stream$extras}"""
+        val toolsJson = buildToolsAndToolChoiceJson(request)
+        return """{"model":"${request.model}","messages":[$messagesJson],"stream":$stream$extras$toolsJson}"""
+    }
+
+    /** Vision 路径手写 JSON，须与 [ChatCompletionRequest] 一致地带上 tools / tool_choice。 */
+    private fun buildToolsAndToolChoiceJson(request: ChatCompletionRequest): String = buildString {
+        val tools = request.tools
+        if (!tools.isNullOrEmpty()) {
+            append(""","tools":""")
+            append(json.encodeToString(ListSerializer(ToolSpec.serializer()), tools))
+        }
+        request.toolChoice?.takeIf { it.isNotBlank() }?.let { choice ->
+            append(""","tool_choice":""")
+            append(json.encodeToString(String.serializer(), choice))
+        }
     }
 
     fun streamChatCompletion(

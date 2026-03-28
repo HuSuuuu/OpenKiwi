@@ -25,9 +25,9 @@ class VoiceOverlayService : OverlayWindowManager() {
         }
     }
 
-    override val overlayTitle = "🎙 语音"
+    override val overlayTitle = "\u8BED\u97F3"
     override val notificationId = 3002
-    override val overlayColor = 0xF01A1A2E.toInt()
+    override val overlayColor = 0xFF191919.toInt()
     override val initialYPosition = 350
 
     private var stateLabel: TextView? = null
@@ -43,15 +43,15 @@ class VoiceOverlayService : OverlayWindowManager() {
 
     override fun onCreateContent(container: LinearLayout) {
         stateLabel = TextView(this).apply {
-            textSize = 11f
-            setTextColor(0xFF8B5CF6.toInt())
-            text = "待命"
+            textSize = 13f
+            setTextColor(mutedColor())
+            text = "\u5F85\u547D"
         }
         container.addView(stateLabel)
 
         contentText = TextView(this).apply {
-            textSize = 10f
-            setTextColor(0xFFD1D5DB.toInt())
+            textSize = 12f
+            setTextColor(textColor())
             text = ""
             maxLines = 4
             layoutParams = LinearLayout.LayoutParams(
@@ -66,7 +66,7 @@ class VoiceOverlayService : OverlayWindowManager() {
             progress = 0
             visibility = View.GONE
             layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(3)
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(2)
             ).apply { topMargin = dp(4) }
         }
         container.addView(progressBar)

@@ -2,58 +2,49 @@ package com.orizon.openkiwi.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-val md_theme_light_primary = Color(0xFF007AFF) // iOS Blue
-val md_theme_light_onPrimary = Color(0xFFFFFFFF)
-val md_theme_light_primaryContainer = Color(0xFFE5F1FF)
-val md_theme_light_onPrimaryContainer = Color(0xFF007AFF)
-val md_theme_light_secondary = Color(0xFF5856D6) // iOS Indigo
-val md_theme_light_onSecondary = Color(0xFFFFFFFF)
-val md_theme_light_secondaryContainer = Color(0xFFEBEBFF)
-val md_theme_light_onSecondaryContainer = Color(0xFF5856D6)
-val md_theme_light_tertiary = Color(0xFF8E8E93) // iOS Gray
-val md_theme_light_onTertiary = Color(0xFFFFFFFF)
-val md_theme_light_tertiaryContainer = Color(0xFFF2F2F7)
-val md_theme_light_onTertiaryContainer = Color(0xFF1C1C1E)
-val md_theme_light_background = Color(0xFFF2F2F7) // iOS Grouped Background
-val md_theme_light_onBackground = Color(0xFF000000)
-val md_theme_light_surface = Color(0xFFFFFFFF)
-val md_theme_light_onSurface = Color(0xFF000000)
-val md_theme_light_surfaceVariant = Color(0xFFE5E5EA) // iOS Gray 5
-val md_theme_light_onSurfaceVariant = Color(0xFF8E8E93)
-val md_theme_light_outline = Color(0xFFC7C7CC) // iOS Gray 4
-val md_theme_light_error = Color(0xFFFF3B30) // iOS Red
-val md_theme_light_onError = Color(0xFFFFFFFF)
-val md_theme_light_errorContainer = Color(0xFFFFEBEB)
+// ── Clean Paper Palette — neutral white with warm undertone, not yellow ──
 
-val md_theme_dark_primary = Color(0xFF0A84FF) // iOS Dark Blue
-val md_theme_dark_onPrimary = Color(0xFFFFFFFF)
-val md_theme_dark_primaryContainer = Color(0xFF003366)
-val md_theme_dark_onPrimaryContainer = Color(0xFF0A84FF)
-val md_theme_dark_secondary = Color(0xFF5E5CE6) // iOS Dark Indigo
-val md_theme_dark_onSecondary = Color(0xFFFFFFFF)
-val md_theme_dark_secondaryContainer = Color(0xFF202040)
-val md_theme_dark_onSecondaryContainer = Color(0xFF5E5CE6)
-val md_theme_dark_tertiary = Color(0xFF8E8E93)
-val md_theme_dark_onTertiary = Color(0xFF000000)
-val md_theme_dark_tertiaryContainer = Color(0xFF2C2C2E)
-val md_theme_dark_onTertiaryContainer = Color(0xFFE5E5EA)
-val md_theme_dark_background = Color(0xFF000000) // iOS Dark Background
-val md_theme_dark_onBackground = Color(0xFFFFFFFF)
-val md_theme_dark_surface = Color(0xFF1C1C1E) // iOS Dark Surface
-val md_theme_dark_onSurface = Color(0xFFFFFFFF)
-val md_theme_dark_surfaceVariant = Color(0xFF2C2C2E) // iOS Dark Gray 5
-val md_theme_dark_onSurfaceVariant = Color(0xFF8E8E93)
-val md_theme_dark_outline = Color(0xFF3A3A3C) // iOS Dark Gray 4
-val md_theme_dark_error = Color(0xFFFF453A) // iOS Dark Red
-val md_theme_dark_onError = Color(0xFF000000)
+val PaperCream        = Color(0xFFF9F8F6)   // very light warm gray, NOT yellow
+val PaperCard         = Color(0xFFF2F0ED)   // subtle card surface
+val PaperCardDark     = Color(0xFFEBE8E4)   // user bubble / pressed
+val PaperInk          = Color(0xFF1A1A1A)   // near-black for readability
+val PaperInkLight     = Color(0xFF6E6E6E)   // secondary text — neutral gray
+val PaperAccent       = Color(0xFF3D7BCC)   // clean blue accent
+val PaperAccentMuted  = Color(0xFF6B9FDB)   // lighter blue for dark mode
+val PaperBorder       = Color(0xFFE2E0DC)   // subtle border
+val PaperBorderLight  = Color(0xFFEBE9E5)   // very subtle border
+val PaperRed          = Color(0xFFCF4744)   // error red
+val PaperGreen        = Color(0xFF5A9E6F)   // success green
+val PaperBlue         = Color(0xFF4A8EC2)   // info / link blue
+val PaperPurple       = Color(0xFF7E6BAD)   // tag / badge purple
+
+val PaperDarkBg       = Color(0xFF161616)
+val PaperDarkCard     = Color(0xFF222222)
+val PaperDarkInk      = Color(0xFFE5E5E5)
+val PaperDarkInkLight = Color(0xFF999999)
+val PaperDarkBorder   = Color(0xFF333333)
+
+// Legacy aliases
+val LuminaBackground = PaperCream
+val LuminaAccentGreen = PaperAccent
+val LuminaGlassDark = PaperCard
+val LuminaGlassLight = PaperCard
+val LuminaGlassUser = PaperCardDark
+val LuminaGlassBorder = PaperBorder
+val LuminaGlassBorderHighlight = PaperBorder
+
+val md_theme_light_tertiary = PaperInkLight
+val md_theme_light_onTertiary = Color.White
+val md_theme_light_tertiaryContainer = PaperCard
+val md_theme_light_onTertiaryContainer = PaperInk
+val md_theme_light_error = PaperRed
+val md_theme_light_onError = Color.White
+val md_theme_light_errorContainer = Color(0xFFFDECEB)
+
+val md_theme_dark_tertiary = PaperDarkInkLight
+val md_theme_dark_onTertiary = Color.Black
+val md_theme_dark_tertiaryContainer = PaperDarkCard
+val md_theme_dark_onTertiaryContainer = PaperDarkInk
+val md_theme_dark_error = Color(0xFFE57373)
+val md_theme_dark_onError = Color.Black
 val md_theme_dark_errorContainer = Color(0xFF401010)
-
-// Lumina Design Colors (Light version)
-val LuminaBackground = Color(0xFFF5F5F7)
-val LuminaAccentGreen = Color(0xFF1DB954)
-val LuminaGlassDark = Color(0xCCFFFFFF) // rgba(255, 255, 255, 0.8)
-val LuminaGlassLight = Color(0x80FFFFFF) // rgba(255, 255, 255, 0.5)
-val LuminaGlassUser = Color(0xFFE5F1FF) // Light blue tint
-val LuminaGlassBorder = Color(0x1A000000) // rgba(0, 0, 0, 0.1)
-val LuminaGlassBorderHighlight = Color(0x33000000) // rgba(0, 0, 0, 0.2)
-

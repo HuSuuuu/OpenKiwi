@@ -1,5 +1,6 @@
 package com.orizon.openkiwi.ui.components
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -31,6 +32,7 @@ private sealed class MdBlock {
     data class BulletList(val items: List<String>) : MdBlock()
     data class NumberedList(val items: List<String>) : MdBlock()
     data class Quote(val content: String) : MdBlock()
+    data class Table(val headers: List<String>, val rows: List<List<String>>) : MdBlock()
     data object Divider : MdBlock()
 }
 
@@ -104,6 +106,24 @@ private fun parseBlocks(markdown: String): List<MdBlock> {
             }
 
             trimmed.isEmpty() -> i++
+
+            trimmed.startsWith("|") && trimmed.endsWith("|") -> {
+                val tableLines = mutableListOf<String>()
+                while (i < lines.size && lines[i].trim().let { it.startsWith("|") && it.endsWith("|") }) {
+                    tableLines.add(lines[i].trim())
+                    i++
+                }
+                if (tableLines.size >= 2) {
+                    val headerCells = tableLines[0].split("|").drop(1).dropLast(1).map { it.trim() }
+                    val startRow = if (tableLines.size >= 2 && tableLines[1].replace("|", "").replace("-", "").replace(":", "").isBlank()) 2 else 1
+                    val dataRows = tableLines.drop(startRow).map { row ->
+                        row.split("|").drop(1).dropLast(1).map { it.trim() }
+                    }
+                    blocks.add(MdBlock.Table(headerCells, dataRows))
+                } else {
+                    blocks.add(MdBlock.Paragraph(tableLines.joinToString("\n")))
+                }
+            }
 
             else -> {
                 val paraLines = mutableListOf<String>()
@@ -409,6 +429,43 @@ fun MarkdownText(
                                 color = color.copy(alpha = 0.8f),
                                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
                             )
+                        }
+                    }
+                }
+
+                is MdBlock.Table -> {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = codeSurfaceColor,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.horizontalScroll(rememberScrollState()).padding(4.dp)) {
+                            Row(modifier = Modifier.fillMaxWidth()) {
+                                block.headers.forEach { header ->
+                                    Text(
+                                        text = header,
+                                        style = style.copy(fontWeight = FontWeight.Bold, fontSize = 13.sp),
+                                        color = color,
+                                        modifier = Modifier.widthIn(min = 60.dp).padding(horizontal = 10.dp, vertical = 6.dp)
+                                    )
+                                }
+                            }
+                            HorizontalDivider(color = color.copy(alpha = 0.15f), thickness = 1.dp)
+                            block.rows.forEachIndexed { idx, row ->
+                                val rowBg = if (idx % 2 == 1) codeBackground.copy(alpha = 0.3f) else Color.Transparent
+                                Row(modifier = Modifier.fillMaxWidth().then(
+                                    if (rowBg != Color.Transparent) Modifier.background(rowBg) else Modifier
+                                )) {
+                                    row.forEach { cell ->
+                                        Text(
+                                            text = cell,
+                                            style = style.copy(fontSize = 13.sp),
+                                            color = color.copy(alpha = 0.9f),
+                                            modifier = Modifier.widthIn(min = 60.dp).padding(horizontal = 10.dp, vertical = 5.dp)
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }

@@ -266,6 +266,33 @@ interface ScheduledTaskDao {
 }
 
 @Dao
+interface McpServerConfigDao {
+    @Query("SELECT * FROM mcp_server_configs ORDER BY name ASC")
+    fun getAllConfigs(): Flow<List<McpServerConfigEntity>>
+
+    @Query("SELECT * FROM mcp_server_configs ORDER BY name ASC")
+    suspend fun getAllConfigsOnce(): List<McpServerConfigEntity>
+
+    @Query("SELECT * FROM mcp_server_configs WHERE isEnabled = 1")
+    suspend fun getEnabledConfigs(): List<McpServerConfigEntity>
+
+    @Query("SELECT * FROM mcp_server_configs WHERE id = :id")
+    suspend fun getConfig(id: String): McpServerConfigEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertConfig(config: McpServerConfigEntity)
+
+    @Update
+    suspend fun updateConfig(config: McpServerConfigEntity)
+
+    @Delete
+    suspend fun deleteConfig(config: McpServerConfigEntity)
+
+    @Query("DELETE FROM mcp_server_configs WHERE id = :id")
+    suspend fun deleteById(id: String)
+}
+
+@Dao
 interface RagChunkDao {
     @Query("DELETE FROM rag_chunks")
     suspend fun clearAll()

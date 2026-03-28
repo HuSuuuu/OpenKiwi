@@ -10,10 +10,7 @@ class CodeExecutionTool(private val sandbox: CodeSandbox) : Tool {
 
     override val definition = ToolDefinition(
         name = "code_execution",
-        description = """Execute code in a sandboxed environment. Returns stdout, stderr, and exit code.
-- python: Runs LOCALLY on the phone via embedded CPython (full standard library + requests, beautifulsoup4). No PC needed.
-- shell: Runs locally via Android sh (ls, cat, grep, find, curl, wget, pm, am, dumpsys, settings, getprop, input, etc.)
-- javascript/powershell/cmd: Requires connected Companion PC.""",
+        description = "Execute code in sandbox. python/shell run locally; javascript/powershell require Companion PC.",
         category = ToolCategory.CODE_EXECUTION.name,
         permissionLevel = PermissionLevel.DANGEROUS.name,
         parameters = mapOf(

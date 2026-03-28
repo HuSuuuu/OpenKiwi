@@ -139,24 +139,50 @@ class OpenAIApiClient(
             .post(body.toRequestBody("application/json".toMediaType()))
             .build()
 
-        val listener = object : EventSourceListener() {
-            override fun onOpen(eventSource: EventSource, response: Response) {
+        /**
+         * 很多网关/代理在最后一个包里带上 `finish_reason`（stop / length / tool_calls），
+         * 但 **不发 `[DONE]`、也不关 TCP**，OkHttp 会一直等到 read timeout，界面便长期停在「生成中」。
+         *
+         * 用 [streamDone] 标记「已正常结束」，在 `onFailure` 里据此决定是真错误还是 cancel 副作用。
+         * 不在 `finishStreamIfTerminated` 里直接 `cancel()` EventSource——
+         * 因为 cancel 会异步触发 `onFailure`，导致 channel 被 `close(IOException)` 关闭，
+         * 上层 `collect` 会抛异常而不是正常结束，内容就丢了。
+         * 改为只 `close()` channel，让 `awaitClose` 统一回收 EventSource。
+         */
+        val streamDone = java.util.concurrent.atomic.AtomicBoolean(false)
+
+        fun finishStreamIfTerminated(chunk: StreamChunk) {
+            val terminalReason = chunk.choices.any { !it.finishReason.isNullOrBlank() }
+            val usageOnlyTerminator = chunk.choices.isEmpty() && chunk.usage != null
+            if (terminalReason || usageOnlyTerminator) {
+                streamDone.set(true)
+                close()
             }
+        }
+
+        val listener = object : EventSourceListener() {
+            override fun onOpen(eventSource: EventSource, response: Response) {}
 
             override fun onEvent(eventSource: EventSource, id: String?, type: String?, data: String) {
                 if (data.trim() == "[DONE]") {
+                    streamDone.set(true)
                     close()
                     return
                 }
                 runCatching {
                     val chunk = json.decodeFromString(StreamChunk.serializer(), data)
                     trySend(chunk)
+                    finishStreamIfTerminated(chunk)
                 }.onFailure {
                     android.util.Log.w("OpenAIApiClient", "Failed to parse SSE chunk: ${data.take(200)}", it)
                 }
             }
 
             override fun onFailure(eventSource: EventSource, t: Throwable?, response: Response?) {
+                if (streamDone.get()) {
+                    close()
+                    return
+                }
                 val code = response?.code
                 val errorBody = runCatching { response?.body?.string() }.getOrNull() ?: ""
                 val msg = if (code != null) {
@@ -169,6 +195,7 @@ class OpenAIApiClient(
             }
 
             override fun onClosed(eventSource: EventSource) {
+                streamDone.set(true)
                 close()
             }
         }
@@ -176,7 +203,7 @@ class OpenAIApiClient(
         val eventSource = EventSources.createFactory(sseClient)
             .newEventSource(httpRequest, listener)
 
-        awaitClose { eventSource.cancel() }
+        awaitClose { runCatching { eventSource.cancel() } }
     }.flowOn(Dispatchers.IO)
 
     private fun buildErrorMessage(code: Int, url: String, model: String, body: String): String {

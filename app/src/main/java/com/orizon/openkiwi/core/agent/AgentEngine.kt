@@ -1,11 +1,13 @@
 package com.orizon.openkiwi.core.agent
 
+import com.orizon.openkiwi.core.llm.*
 import com.orizon.openkiwi.core.memory.MemoryManager
 import com.orizon.openkiwi.core.model.*
 import com.orizon.openkiwi.core.skill.SkillLearner
 import com.orizon.openkiwi.core.tool.ToolArtifact
 import com.orizon.openkiwi.core.tool.ToolExecutor
 import com.orizon.openkiwi.core.tool.ToolRegistry
+import com.orizon.openkiwi.core.tool.ToolResult
 import com.orizon.openkiwi.core.tool.ToolRetriever
 import com.orizon.openkiwi.data.preferences.UserPreferences
 import com.orizon.openkiwi.data.repository.ChatRepository
@@ -16,6 +18,8 @@ import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.*
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -33,14 +37,16 @@ class AgentEngine(
     private val modelRepository: ModelRepository,
     private val smartModelDispatcher: SmartModelDispatcher? = null,
     private val skillLearner: SkillLearner? = null,
-    private val userPreferences: UserPreferences? = null
+    private val userPreferences: UserPreferences? = null,
+    private val llmProviderFactory: LlmProviderFactory? = null,
+    val planner: AgentPlanner = AgentPlanner(apiClient, llmProviderFactory),
+    val reflector: AgentReflector = AgentReflector(apiClient)
 ) {
     private val json = Json { ignoreUnknownKeys = true }
     private val _agentState = MutableStateFlow(AgentState())
     val agentState: StateFlow<AgentState> = _agentState.asStateFlow()
 
     private var currentJob: Job? = null
-    private val maxToolIterations = 10
 
     suspend fun processMessage(
         sessionId: String,
@@ -80,7 +86,22 @@ class AgentEngine(
             }
         }
 
-        val relevantMemories = memoryManager.searchMemories(userMessage, limit = 5, scope = sessionId)
+        if (messages.none { it.role == ChatRole.SYSTEM }) {
+            messages.add(0, ChatMessage(role = ChatRole.SYSTEM, content = AgentSystemPrompt.DEFAULT))
+        }
+
+        val parasiticOn = ParasiticQueryTool.enabled
+
+        val (relevantMemories, toolSpecs) = coroutineScope {
+            val memJob = async(Dispatchers.IO) {
+                memoryManager.searchMemories(userMessage, limit = 5, scope = sessionId)
+            }
+            val toolJob = async(Dispatchers.Default) {
+                resolveAllToolSpecs(config, userMessage, messages, parasiticOn)
+            }
+            memJob.await() to toolJob.await()
+        }
+
         if (relevantMemories.isNotEmpty()) {
             val memoryContext = relevantMemories.joinToString("\n") { "- ${it.content}" }
             messages.add(0, ChatMessage(
@@ -89,16 +110,9 @@ class AgentEngine(
             ))
         }
 
-        if (messages.none { it.role == ChatRole.SYSTEM }) {
-            messages.add(0, ChatMessage(role = ChatRole.SYSTEM, content = AgentSystemPrompt.DEFAULT))
-        }
-
         val compressedMessages = memoryManager.compressContext(
             messages, config.maxTokens / 2
         )
-
-        val parasiticOn = ParasiticQueryTool.enabled
-        val toolSpecs = resolveAllToolSpecs(config, userMessage, messages, parasiticOn)
 
         if (parasiticOn && !toolSpecs.isNullOrEmpty() && !config.webSearchExclusive) {
             val hint = ChatMessage(
@@ -108,10 +122,16 @@ class AgentEngine(
             messages.add(hint)
         }
 
+        val maxToolIterations = config.maxToolIterations.coerceIn(1, 50)
+        reflector.resetForNewTask()
+
         val globalFullContent = StringBuilder()
         val globalThinkingContent = StringBuilder()
         val globalToolLog = StringBuilder()
         val pendingArtifacts = mutableListOf<Pair<String, ToolArtifact>>()
+
+        val provider = llmProviderFactory?.getProvider(config.providerType)
+        val useUnifiedProvider = provider != null && config.providerType != "openai"
 
         try {
             var iterationMessages = compressedMessages.toMutableList()
@@ -120,6 +140,19 @@ class AgentEngine(
             val taskStartTime = System.currentTimeMillis()
 
             while (iteration < maxToolIterations) {
+                if (useUnifiedProvider) {
+                    val unifiedResult = executeWithUnifiedProvider(
+                        provider!!, config, iterationMessages, toolSpecs,
+                        sessionId, iteration, maxToolIterations,
+                        globalFullContent, globalThinkingContent, globalToolLog,
+                        pendingArtifacts, toolCallRecords
+                    )
+                    for (chunk in unifiedResult.emittedChunks) emit(chunk)
+                    iterationMessages = unifiedResult.updatedMessages
+                    if (unifiedResult.shouldBreak) break
+                    if (unifiedResult.shouldContinue) { iteration++; continue }
+                    break
+                }
                 val request = ChatCompletionRequest(
                     model = config.modelName,
                     messages = iterationMessages,
@@ -262,7 +295,18 @@ class AgentEngine(
                             globalToolLog.append(callingMarker)
                             emit(callingMarker)
 
-                            val toolResult = toolExecutor.execute(tc.function.name, params, sessionId)
+                            val tool = toolRegistry.getTool(tc.function.name)
+                            val toolResult: ToolResult
+                            if (tool != null && tool.supportsStreaming) {
+                                val streamOutput = StringBuilder()
+                                tool.executeStreaming(params).collect { chunk ->
+                                    streamOutput.append(chunk)
+                                    emit("[stream:${tc.function.name}]$chunk")
+                                }
+                                toolResult = ToolResult(tc.function.name, true, streamOutput.toString())
+                            } else {
+                                toolResult = toolExecutor.execute(tc.function.name, params, sessionId)
+                            }
                             toolResult.artifacts.forEach { artifact ->
                                 pendingArtifacts += tc.function.name to artifact
                             }
@@ -420,7 +464,7 @@ class AgentEngine(
         }
         if (enabledTools.isEmpty()) return null
 
-        val useDynamic = userPreferences?.dynamicToolRetrieval?.first() ?: false
+        val useDynamic = userPreferences?.dynamicToolRetrieval?.first() ?: true
         val fullSpecs = toolRegistry.toToolSpecs(enabledTools)
 
         if (!useDynamic || enabledTools.size <= DYNAMIC_TOOL_MIN_REGISTRY_SIZE) {
@@ -430,12 +474,16 @@ class AgentEngine(
         val query = buildToolRetrievalQuery(userMessage, contextMessages)
         val pinNames = buildSet {
             add("memory")
+            add("terminal")
+            add("code_execution")
+            add("file_manager")
+            add("web_search")
             if (parasiticOn) add("parasitic_query")
         }
         val selected = ToolRetriever.selectTools(
             tools = enabledTools,
             query = query,
-            topK = 24,
+            topK = 12,
             pinNames = pinNames
         )
         val fallbackMin = minOf(10, (enabledTools.size + 1) / 2).coerceAtLeast(6)
@@ -466,9 +514,197 @@ class AgentEngine(
         is JsonArray -> value.toString()
         is JsonObject -> value.toString()
     }
+    private data class UnifiedIterationResult(
+        val emittedChunks: List<String>,
+        val updatedMessages: MutableList<ChatMessage>,
+        val shouldBreak: Boolean,
+        val shouldContinue: Boolean
+    )
+
+    private suspend fun executeWithUnifiedProvider(
+        provider: LlmProvider,
+        config: ModelConfig,
+        currentMessages: MutableList<ChatMessage>,
+        toolSpecs: List<ToolSpec>?,
+        sessionId: String,
+        iteration: Int,
+        maxIterations: Int,
+        globalFullContent: StringBuilder,
+        globalThinkingContent: StringBuilder,
+        globalToolLog: StringBuilder,
+        pendingArtifacts: MutableList<Pair<String, ToolArtifact>>,
+        toolCallRecords: MutableList<SkillLearner.ToolCallRecord>
+    ): UnifiedIterationResult {
+        val emitted = mutableListOf<String>()
+        val messages = currentMessages.toMutableList()
+
+        val unifiedMessages = messages.map { msg ->
+            UnifiedMessage(
+                role = when (msg.role) {
+                    ChatRole.SYSTEM -> UnifiedRole.SYSTEM
+                    ChatRole.USER -> UnifiedRole.USER
+                    ChatRole.ASSISTANT -> UnifiedRole.ASSISTANT
+                    ChatRole.TOOL -> UnifiedRole.TOOL
+                },
+                content = msg.content,
+                toolCalls = msg.toolCalls?.map {
+                    UnifiedToolCall(id = it.id, name = it.function.name, arguments = it.function.arguments)
+                },
+                toolCallId = msg.toolCallId,
+                reasoningContent = msg.reasoningContent,
+                imageUrl = msg.imageUrl,
+                videoUrl = msg.videoUrl
+            )
+        }
+
+        val unifiedToolSpecs = toolSpecs?.filter { it.type == ToolSpec.TYPE_FUNCTION }?.map { spec ->
+            UnifiedToolSpec(
+                name = spec.function.name,
+                description = spec.function.description,
+                parametersJson = json.encodeToString(ToolParameters.serializer(), spec.function.parameters)
+            )
+        }
+
+        val unifiedRequest = UnifiedRequest(
+            model = config.modelName,
+            messages = unifiedMessages,
+            temperature = config.temperature,
+            maxTokens = config.maxTokens,
+            topP = config.topP,
+            frequencyPenalty = config.frequencyPenalty,
+            presencePenalty = config.presencePenalty,
+            tools = unifiedToolSpecs?.takeIf { it.isNotEmpty() },
+            reasoningEffort = config.reasoningEffort.takeIf { it in listOf("low", "medium", "high") }
+        )
+
+        if (config.supportsStreaming) {
+            val fullContent = StringBuilder()
+            val thinkingContent = StringBuilder()
+            var toolCallsDetected = false
+            data class Acc(var id: String, var name: String, val args: StringBuilder = StringBuilder())
+            val accToolCalls = mutableMapOf<Int, Acc>()
+
+            provider.streamChatCompletion(config.apiBaseUrl, config.apiKey, unifiedRequest)
+                .collect { chunk ->
+                    chunk.reasoningDelta?.let { r ->
+                        thinkingContent.append(r)
+                        globalThinkingContent.clear().append(thinkingContent)
+                        emitted += "$THINKING_MARKER$r"
+                    }
+                    chunk.contentDelta?.let { c ->
+                        fullContent.append(c)
+                        globalFullContent.clear().append(fullContent)
+                        emitted += c
+                    }
+                    chunk.toolCalls?.forEach { tc ->
+                        toolCallsDetected = true
+                        val acc = accToolCalls.getOrPut(tc.index) { Acc("", "") }
+                        if (tc.id.isNotBlank()) acc.id = tc.id
+                        if (tc.name.isNotBlank()) acc.name = tc.name
+                        if (tc.argumentsDelta.isNotEmpty()) acc.args.append(tc.argumentsDelta)
+                    }
+                    if (chunk.finishReason == "tool_calls") toolCallsDetected = true
+                    chunk.usage?.let {
+                        TokenTracker.record(
+                            Usage(it.promptTokens, it.completionTokens, it.totalTokens),
+                            config.modelName, sessionId
+                        )
+                    }
+                }
+
+            if (toolCallsDetected && accToolCalls.isNotEmpty()) {
+                val toolCalls = accToolCalls.entries.sortedBy { it.key }.map { (idx, acc) ->
+                    ToolCall(id = acc.id.ifBlank { "call_$idx" }, index = idx,
+                        function = FunctionCall(name = acc.name, arguments = acc.args.toString()))
+                }
+                messages.add(ChatMessage(role = ChatRole.ASSISTANT,
+                    content = fullContent.toString().takeIf { it.isNotBlank() }, toolCalls = toolCalls))
+                for (tc in toolCalls) {
+                    val params = parseToolArguments(tc.function.arguments)
+                    val marker = "\n[Calling tool: ${tc.function.name}]\n"
+                    globalToolLog.append(marker); emitted += marker
+                    val result = toolExecutor.execute(tc.function.name, params, sessionId)
+                    result.artifacts.forEach { pendingArtifacts += tc.function.name to it }
+                    toolCallRecords.add(SkillLearner.ToolCallRecord(tc.function.name,
+                        params.mapValues { it.value?.toString() ?: "" }, result, toolCallRecords.size))
+                    messages.add(ChatMessage(role = ChatRole.TOOL,
+                        content = result.output.ifBlank { result.error ?: "No output" }, toolCallId = tc.id))
+                    val rm = "[Tool result: ${if (result.success) "success" else "failed"}]\n"
+                    globalToolLog.append(rm); emitted += rm
+                }
+                return UnifiedIterationResult(emitted, messages, shouldBreak = false, shouldContinue = true)
+            }
+
+            val savedContent = buildString {
+                if (globalToolLog.isNotBlank()) append(globalToolLog)
+                if (thinkingContent.isNotBlank()) append("<think>\n$thinkingContent\n</think>\n\n")
+                append(VendorResponseSanitizer.stripPseudoFunctionCallBlocks(fullContent.toString()))
+            }
+            val messageId = chatRepository.addMessage(sessionId,
+                ChatMessage(role = ChatRole.ASSISTANT, content = savedContent))
+            pendingArtifacts.groupBy({ it.first }, { it.second }).forEach { (toolName, artifacts) ->
+                chatRepository.saveToolArtifacts(sessionId, messageId, toolName, artifacts)
+            }
+            pendingArtifacts.clear()
+            globalFullContent.clear(); globalThinkingContent.clear(); globalToolLog.clear()
+            return UnifiedIterationResult(emitted, messages, shouldBreak = true, shouldContinue = false)
+        } else {
+            val result = provider.chatCompletion(config.apiBaseUrl, config.apiKey, unifiedRequest)
+            if (result.isFailure) {
+                val err = "API 请求失败: ${result.exceptionOrNull()?.message}"
+                emitted += err
+                return UnifiedIterationResult(emitted, messages, shouldBreak = true, shouldContinue = false)
+            }
+            val response = result.getOrThrow()
+            response.usage?.let {
+                TokenTracker.record(Usage(it.promptTokens, it.completionTokens, it.totalTokens),
+                    config.modelName, sessionId)
+            }
+            if (!response.toolCalls.isNullOrEmpty()) {
+                val toolCalls = response.toolCalls.mapIndexed { idx, tc ->
+                    ToolCall(id = tc.id, index = idx, function = FunctionCall(name = tc.name, arguments = tc.arguments))
+                }
+                messages.add(ChatMessage(role = ChatRole.ASSISTANT, content = response.content, toolCalls = toolCalls))
+                for (tc in toolCalls) {
+                    val params = parseToolArguments(tc.function.arguments)
+                    val marker = "\n[Calling tool: ${tc.function.name}]\n"
+                    globalToolLog.append(marker); emitted += marker
+                    val toolResult = toolExecutor.execute(tc.function.name, params, sessionId)
+                    toolResult.artifacts.forEach { pendingArtifacts += tc.function.name to it }
+                    toolCallRecords.add(SkillLearner.ToolCallRecord(tc.function.name,
+                        params.mapValues { it.value?.toString() ?: "" }, toolResult, toolCallRecords.size))
+                    messages.add(ChatMessage(role = ChatRole.TOOL,
+                        content = toolResult.output.ifBlank { toolResult.error ?: "No output" }, toolCallId = tc.id))
+                    val rm = "[Tool result: ${if (toolResult.success) "success" else "failed"}]\n"
+                    globalToolLog.append(rm); emitted += rm
+                }
+                return UnifiedIterationResult(emitted, messages, shouldBreak = false, shouldContinue = true)
+            }
+            val content = response.content ?: ""
+            response.reasoningContent?.let {
+                globalThinkingContent.clear().append(it)
+                emitted += "$THINKING_MARKER$it"
+            }
+            emitted += VendorResponseSanitizer.stripPseudoFunctionCallBlocks(content)
+            val savedContent = buildString {
+                if (globalToolLog.isNotBlank()) append(globalToolLog)
+                response.reasoningContent?.let { append("<think>\n$it\n</think>\n\n") }
+                append(VendorResponseSanitizer.stripPseudoFunctionCallBlocks(content))
+            }
+            val messageId = chatRepository.addMessage(sessionId,
+                ChatMessage(role = ChatRole.ASSISTANT, content = savedContent))
+            pendingArtifacts.groupBy({ it.first }, { it.second }).forEach { (toolName, artifacts) ->
+                chatRepository.saveToolArtifacts(sessionId, messageId, toolName, artifacts)
+            }
+            pendingArtifacts.clear()
+            globalFullContent.clear(); globalThinkingContent.clear(); globalToolLog.clear()
+            return UnifiedIterationResult(emitted, messages, shouldBreak = true, shouldContinue = false)
+        }
+    }
+
     companion object {
         /** 工具数量较少时检索收益小，直接全量下发 */
-        private const val DYNAMIC_TOOL_MIN_REGISTRY_SIZE = 14
+        private const val DYNAMIC_TOOL_MIN_REGISTRY_SIZE = 8
     }
 }
 

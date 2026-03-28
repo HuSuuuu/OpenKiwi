@@ -14,10 +14,7 @@ import kotlinx.serialization.json.jsonPrimitive
 class GUIOperationTool : Tool {
     override val definition = ToolDefinition(
         name = "gui_operation",
-        description = """Perform GUI operations on Android screen. Supports single or batch actions.
-For batch mode: pass action="batch" with a JSON array in "steps" (each step is {action, text?, view_id?, x?, y?, x2?, y2?, duration?}).
-Single actions: get_screen, click_text, click_id, click_xy, long_press_xy, set_text, swipe, scroll_down, scroll_up, press_back, press_home, press_recents, open_notifications, open_quick_settings, find_text, get_focused.
-Batch mode executes all steps sequentially in ONE call — much faster than separate tool calls.""",
+        description = "Perform GUI operations on Android screen. Use action='batch' with 'steps' JSON array for multiple actions in one call.",
         category = ToolCategory.GUI.name,
         permissionLevel = PermissionLevel.DANGEROUS.name,
         parameters = mapOf(

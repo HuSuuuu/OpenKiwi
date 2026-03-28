@@ -45,6 +45,11 @@ import com.orizon.openkiwi.data.preferences.UserPreferences
 import com.orizon.openkiwi.data.repository.ChatRepository
 import com.orizon.openkiwi.data.repository.ArtifactRepository
 import com.orizon.openkiwi.data.repository.ModelRepository
+import com.orizon.openkiwi.core.llm.LlmProviderFactory
+import com.orizon.openkiwi.core.mcp.McpManager
+import com.orizon.openkiwi.data.repository.McpServerRepository
+import com.orizon.openkiwi.network.ApiAuth
+import com.orizon.openkiwi.network.ApiRouter
 import com.orizon.openkiwi.network.CompanionServer
 import com.orizon.openkiwi.network.FeishuApiClient
 import com.orizon.openkiwi.network.FeishuConfig
@@ -86,6 +91,7 @@ class AppContainer(context: Context) {
 
     val httpClient = HttpClientFactory.create(enableLogging = true)
     val apiClient = OpenAIApiClient(httpClient, apiJson)
+    val llmProviderFactory = LlmProviderFactory(httpClient, apiClient)
 
     val chatRepository = ChatRepository(database.sessionDao(), database.messageDao(), database.artifactDao())
     val artifactRepository = ArtifactRepository(database.artifactDao())
@@ -132,6 +138,7 @@ class AppContainer(context: Context) {
         register(SystemInfoTool())
         register(ClipboardTool(context))
         register(ShellCommandTool())
+        register(TerminalTool(terminalSessionManager))
         register(AppManagerTool(context))
         register(FileManagerTool(context))
         register(IntentTool(context))
@@ -203,7 +210,8 @@ class AppContainer(context: Context) {
         modelRepository = modelRepository,
         smartModelDispatcher = smartModelDispatcher,
         skillLearner = skillLearner,
-        userPreferences = userPreferences
+        userPreferences = userPreferences,
+        llmProviderFactory = llmProviderFactory
     )
 
     val communicationBus = AgentCommunicationBus()
@@ -213,10 +221,15 @@ class AppContainer(context: Context) {
         toolExecutor = toolExecutor,
         memoryManager = memoryManager,
         chatRepository = chatRepository,
-        modelRepository = modelRepository
+        modelRepository = modelRepository,
+        communicationBus = communicationBus,
+        llmProviderFactory = llmProviderFactory
     )
 
     val pluginManager = PluginManager(toolRegistry)
+
+    val mcpServerRepository = McpServerRepository(database.mcpServerConfigDao())
+    val mcpManager = McpManager(toolRegistry, httpClient)
 
     val guiActionParser = GuiActionParser()
     val guiActionExecutor = GuiActionExecutor(context)
@@ -224,6 +237,15 @@ class AppContainer(context: Context) {
 
     val recipeManager = RecipeManager(context)
     val recipeExecutor = RecipeExecutor(guiAgent)
+
+    val apiAuth = ApiAuth(userPreferences)
+    val apiRouter = ApiRouter(
+        agentEngine = agentEngine,
+        chatRepository = chatRepository,
+        toolRegistry = toolRegistry,
+        toolExecutor = toolExecutor,
+        apiAuth = apiAuth
+    )
 
     val companionServer = CompanionServer(
         context = context,
@@ -246,6 +268,7 @@ class AppContainer(context: Context) {
     )
 
     init {
+        companionServer.apiRouter = apiRouter
         codeSandbox.companionServer = companionServer
 
         toolRegistry.register(SubAgentTool(subAgentManager))
@@ -266,8 +289,8 @@ class AppContainer(context: Context) {
             }
         }.start()
 
-        dynamicPluginLoader.scanAndLoadPlugins().forEach { plugin ->
-            pluginManager.loadPlugin(plugin)
+        dynamicPluginLoader.scanWithManifests().forEach { (plugin, manifest) ->
+            pluginManager.loadPlugin(plugin, manifest)
         }
 
         companionServer.start()
@@ -338,6 +361,15 @@ class AppContainer(context: Context) {
 
         containerScope.launch {
             scheduleManager.syncAll(database.scheduledTaskDao())
+        }
+
+        containerScope.launch {
+            try {
+                val mcpConfigs = mcpServerRepository.getEnabledConfigs()
+                mcpManager.connectAll(mcpConfigs)
+            } catch (e: Exception) {
+                android.util.Log.w("AppContainer", "Failed to start MCP servers", e)
+            }
         }
     }
 }

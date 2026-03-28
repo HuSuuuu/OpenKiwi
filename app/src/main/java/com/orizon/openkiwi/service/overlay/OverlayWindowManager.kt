@@ -91,12 +91,26 @@ abstract class OverlayWindowManager : Service() {
     @SuppressLint("ClickableViewAccessibility")
     private fun showOverlay() {
         val dp = resources.displayMetrics.density
+        val isDark = (resources.configuration.uiMode and
+            android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
+            android.content.res.Configuration.UI_MODE_NIGHT_YES
+
+        val bgColor = if (isDark) 0xFF161616.toInt() else 0xFFF9F8F6.toInt()
+        val borderColor = if (isDark) 0xFF333333.toInt() else 0xFFE2E0DC.toInt()
+        val textColor = if (isDark) 0xFFE5E5E5.toInt() else 0xFF1A1A1A.toInt()
+        val mutedColor = if (isDark) 0xFF999999.toInt() else 0xFF6E6E6E.toInt()
+
+        val bg = android.graphics.drawable.GradientDrawable().apply {
+            setColor(bgColor)
+            cornerRadius = 12 * dp
+            setStroke((1 * dp).toInt(), borderColor)
+        }
 
         val outerContainer = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(overlayColor)
-            setPadding((10 * dp).toInt(), (6 * dp).toInt(), (10 * dp).toInt(), (8 * dp).toInt())
-            elevation = 8 * dp
+            background = bg
+            setPadding((12 * dp).toInt(), (8 * dp).toInt(), (12 * dp).toInt(), (10 * dp).toInt())
+            elevation = 4 * dp
         }
 
         val titleRow = LinearLayout(this).apply {
@@ -106,18 +120,18 @@ abstract class OverlayWindowManager : Service() {
 
         titleTextView = TextView(this).apply {
             text = overlayTitle
-            textSize = 12f
-            typeface = Typeface.DEFAULT_BOLD
-            setTextColor(0xFFE0E0E0.toInt())
+            textSize = 14f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+            setTextColor(textColor)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
         titleRow.addView(titleTextView)
 
         val miniBtn = TextView(this).apply {
-            text = "  ─  "
-            textSize = 14f
-            setTextColor(0xFFAAAAAA.toInt())
-            setPadding((8 * dp).toInt(), (4 * dp).toInt(), (8 * dp).toInt(), (4 * dp).toInt())
+            text = " \u2500 "
+            textSize = 13f
+            setTextColor(mutedColor)
+            setPadding((6 * dp).toInt(), (2 * dp).toInt(), (6 * dp).toInt(), (2 * dp).toInt())
             isClickable = true
             isFocusable = true
             setOnClickListener { toggleMiniMode() }
@@ -125,10 +139,10 @@ abstract class OverlayWindowManager : Service() {
         titleRow.addView(miniBtn)
 
         val closeBtn = TextView(this).apply {
-            text = "  ✕  "
-            textSize = 14f
-            setTextColor(0xFFEF4444.toInt())
-            setPadding((8 * dp).toInt(), (4 * dp).toInt(), (8 * dp).toInt(), (4 * dp).toInt())
+            text = " \u00D7 "
+            textSize = 13f
+            setTextColor(mutedColor)
+            setPadding((6 * dp).toInt(), (2 * dp).toInt(), (6 * dp).toInt(), (2 * dp).toInt())
             isClickable = true
             isFocusable = true
             setOnClickListener { stopSelf() }
@@ -136,19 +150,26 @@ abstract class OverlayWindowManager : Service() {
         titleRow.addView(closeBtn)
         outerContainer.addView(titleRow)
 
+        val divider = View(this).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, (1 * dp).toInt()
+            ).apply { topMargin = (6 * dp).toInt(); bottomMargin = (6 * dp).toInt() }
+            setBackgroundColor(borderColor)
+        }
+        outerContainer.addView(divider)
+
         contentContainer = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = (4 * dp).toInt() }
+            )
         }
         onCreateContent(contentContainer!!)
         outerContainer.addView(contentContainer)
 
         rootView = outerContainer
 
-        // Drag via title text only; buttons remain clickable
         titleTextView!!.setOnTouchListener(object : View.OnTouchListener {
             private var isClick = false
             override fun onTouch(v: View, event: MotionEvent): Boolean {
@@ -180,7 +201,7 @@ abstract class OverlayWindowManager : Service() {
         else @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE
 
         windowParams = WindowManager.LayoutParams(
-            (240 * dp).toInt(),
+            (280 * dp).toInt(),
             WindowManager.LayoutParams.WRAP_CONTENT,
             layoutFlag,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
@@ -205,11 +226,20 @@ abstract class OverlayWindowManager : Service() {
 
     protected fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
-    protected fun createLabel(text: String, color: Int = 0xFFCCCCCC.toInt(), size: Float = 11f): TextView {
+    protected fun isDarkMode(): Boolean {
+        return (resources.configuration.uiMode and
+            android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
+            android.content.res.Configuration.UI_MODE_NIGHT_YES
+    }
+
+    protected fun textColor(): Int = if (isDarkMode()) 0xFFE5E5E5.toInt() else 0xFF1A1A1A.toInt()
+    protected fun mutedColor(): Int = if (isDarkMode()) 0xFF999999.toInt() else 0xFF6E6E6E.toInt()
+
+    protected fun createLabel(text: String, color: Int = 0xFF787774.toInt(), size: Float = 13f): TextView {
         return TextView(this).apply {
             this.text = text
             textSize = size
-            setTextColor(color)
+            setTextColor(if (color == 0xFF787774.toInt()) mutedColor() else color)
         }
     }
 
@@ -221,8 +251,8 @@ abstract class OverlayWindowManager : Service() {
             )
         }
         val tv = TextView(this).apply {
-            textSize = 10f
-            setTextColor(0xFFB0B0B0.toInt())
+            textSize = 12f
+            setTextColor(textColor())
             this.maxLines = maxLines
         }
         scroll.addView(tv)

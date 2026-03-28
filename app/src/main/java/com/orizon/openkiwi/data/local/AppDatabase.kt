@@ -23,9 +23,10 @@ import com.orizon.openkiwi.data.local.entity.*
         AuditLogEntity::class,
         ArtifactEntity::class,
         ScheduledTaskEntity::class,
-        RagChunkEntity::class
+        RagChunkEntity::class,
+        McpServerConfigEntity::class
     ],
-    version = 10,
+    version = 12,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -42,6 +43,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun artifactDao(): ArtifactDao
     abstract fun scheduledTaskDao(): ScheduledTaskDao
     abstract fun ragChunkDao(): RagChunkDao
+    abstract fun mcpServerConfigDao(): McpServerConfigDao
 
     companion object {
         private val MIGRATION_9_10 = object : Migration(9, 10) {
@@ -55,6 +57,26 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE model_configs ADD COLUMN providerType TEXT NOT NULL DEFAULT 'openai'")
+                db.execSQL("ALTER TABLE model_configs ADD COLUMN maxToolIterations INTEGER NOT NULL DEFAULT 10")
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS mcp_server_configs (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        name TEXT NOT NULL,
+                        transportType TEXT NOT NULL DEFAULT 'sse',
+                        url TEXT NOT NULL DEFAULT '',
+                        command TEXT NOT NULL DEFAULT '',
+                        args TEXT NOT NULL DEFAULT '[]',
+                        env TEXT NOT NULL DEFAULT '{}',
+                        isEnabled INTEGER NOT NULL DEFAULT 1,
+                        createdAt INTEGER NOT NULL DEFAULT 0
+                    )
+                """.trimIndent())
+            }
+        }
+
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
@@ -65,7 +87,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "openkiwi_database"
                 )
-                    .addMigrations(MIGRATION_9_10)
+                    .addMigrations(MIGRATION_9_10, MIGRATION_10_11)
                     .fallbackToDestructiveMigration()
                     .build()
                 INSTANCE = instance

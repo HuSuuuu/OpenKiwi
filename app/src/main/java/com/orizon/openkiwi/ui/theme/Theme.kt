@@ -14,17 +14,17 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontFamily
 import androidx.core.view.WindowCompat
 
-val LocalAccentColor = compositionLocalOf { LuminaAccentGreen }
+val LocalAccentColor = compositionLocalOf { PaperAccent }
 
 object AccentColors {
-    val green = Color(0xFF1DB954)
-    val blue = Color(0xFF007AFF)
-    val purple = Color(0xFF8B5CF6)
-    val orange = Color(0xFFFF9500)
-    val pink = Color(0xFFFF2D55)
-    val cyan = Color(0xFF00C7BE)
-    val red = Color(0xFFFF3B30)
-    val indigo = Color(0xFF5856D6)
+    val green = Color(0xFF4CAF7D)
+    val blue = Color(0xFF4A8EC2)
+    val purple = Color(0xFF7E6BAD)
+    val orange = PaperAccent
+    val pink = Color(0xFFD4697A)
+    val cyan = Color(0xFF3BA5A8)
+    val red = Color(0xFFCF4744)
+    val indigo = Color(0xFF5C6BC0)
 
     val all = mapOf(
         "green" to green, "blue" to blue, "purple" to purple,
@@ -32,86 +32,88 @@ object AccentColors {
         "red" to red, "indigo" to indigo
     )
     val labels = mapOf(
-        "green" to "绿", "blue" to "蓝", "purple" to "紫",
-        "orange" to "橙", "pink" to "粉", "cyan" to "青",
-        "red" to "红", "indigo" to "靛蓝"
+        "green" to "\u7EFF", "blue" to "\u84DD", "purple" to "\u7D2B",
+        "orange" to "\u6A59", "pink" to "\u7C89", "cyan" to "\u9752",
+        "red" to "\u7EA2", "indigo" to "\u9756\u84DD"
     )
 
-    fun fromKey(key: String): Color = all[key] ?: green
+    fun fromKey(key: String): Color = all[key] ?: PaperAccent
 }
 
 object AppFonts {
     val all = mapOf(
-        "default" to FontFamily.Default,
+        "default" to FontFamily.Serif,
         "serif" to FontFamily.Serif,
         "monospace" to FontFamily.Monospace,
         "sans" to FontFamily.SansSerif,
         "cursive" to FontFamily.Cursive
     )
     val labels = mapOf(
-        "default" to "默认", "serif" to "宋体/衬线",
-        "monospace" to "等宽", "sans" to "无衬线",
-        "cursive" to "手写体"
+        "default" to "\u5B8B\u4F53", "serif" to "\u5B8B\u4F53/\u886C\u7EBF",
+        "monospace" to "\u7B49\u5BBD", "sans" to "\u65E0\u886C\u7EBF",
+        "cursive" to "\u624B\u5199\u4F53"
     )
 
-    fun fromKey(key: String): FontFamily = all[key] ?: FontFamily.Default
+    fun fromKey(key: String): FontFamily = all[key] ?: FontFamily.Serif
 }
 
 private fun buildLightScheme(accent: Color) = lightColorScheme(
     primary = accent,
     onPrimary = Color.White,
-    primaryContainer = LuminaGlassUser,
-    onPrimaryContainer = Color.Black,
-    secondary = accent,
+    primaryContainer = Color(0xFFEDF3FA),
+    onPrimaryContainer = Color(0xFF1A3A5C),
+    secondary = Color(0xFF5A6B7A),
     onSecondary = Color.White,
-    secondaryContainer = LuminaGlassDark,
-    onSecondaryContainer = Color.Black,
-    tertiary = md_theme_light_tertiary,
-    onTertiary = md_theme_light_onTertiary,
-    tertiaryContainer = md_theme_light_tertiaryContainer,
-    onTertiaryContainer = md_theme_light_onTertiaryContainer,
-    background = LuminaBackground,
-    onBackground = Color.Black,
-    surface = LuminaBackground,
-    onSurface = Color.Black,
-    surfaceVariant = LuminaGlassDark,
-    onSurfaceVariant = Color.Black,
-    outline = LuminaGlassBorder,
-    error = md_theme_light_error,
-    onError = md_theme_light_onError,
-    errorContainer = md_theme_light_errorContainer
+    secondaryContainer = Color(0xFFEEF1F4),
+    onSecondaryContainer = Color(0xFF1A2530),
+    tertiary = Color(0xFF6B5E7A),
+    onTertiary = Color.White,
+    tertiaryContainer = Color(0xFFF0ECF4),
+    onTertiaryContainer = Color(0xFF251E30),
+    background = PaperCream,
+    onBackground = PaperInk,
+    surface = PaperCream,
+    onSurface = PaperInk,
+    surfaceVariant = PaperCard,
+    onSurfaceVariant = PaperInkLight,
+    outline = PaperBorder,
+    outlineVariant = PaperBorderLight,
+    error = PaperRed,
+    onError = Color.White,
+    errorContainer = Color(0xFFFCEDEC)
 )
 
 private fun buildDarkScheme(accent: Color) = darkColorScheme(
-    primary = accent,
-    onPrimary = Color.White,
-    primaryContainer = LuminaGlassUser,
-    onPrimaryContainer = Color.Black,
-    secondary = accent,
-    onSecondary = Color.White,
-    secondaryContainer = LuminaGlassDark,
-    onSecondaryContainer = Color.Black,
-    tertiary = md_theme_dark_tertiary,
-    onTertiary = md_theme_dark_onTertiary,
-    tertiaryContainer = md_theme_dark_tertiaryContainer,
-    onTertiaryContainer = md_theme_dark_onTertiaryContainer,
-    background = LuminaBackground,
-    onBackground = Color.Black,
-    surface = LuminaBackground,
-    onSurface = Color.Black,
-    surfaceVariant = LuminaGlassDark,
-    onSurfaceVariant = Color.Black,
-    outline = LuminaGlassBorder,
-    error = md_theme_dark_error,
-    onError = md_theme_dark_onError,
-    errorContainer = md_theme_dark_errorContainer
+    primary = PaperAccentMuted,
+    onPrimary = Color.Black,
+    primaryContainer = PaperDarkCard,
+    onPrimaryContainer = PaperDarkInk,
+    secondary = PaperDarkInkLight,
+    onSecondary = Color.Black,
+    secondaryContainer = PaperDarkCard,
+    onSecondaryContainer = PaperDarkInk,
+    tertiary = Color(0xFFB0A0C8),
+    onTertiary = Color.Black,
+    tertiaryContainer = PaperDarkCard,
+    onTertiaryContainer = PaperDarkInk,
+    background = PaperDarkBg,
+    onBackground = PaperDarkInk,
+    surface = PaperDarkBg,
+    onSurface = PaperDarkInk,
+    surfaceVariant = PaperDarkCard,
+    onSurfaceVariant = PaperDarkInkLight,
+    outline = PaperDarkBorder,
+    outlineVariant = PaperDarkBorder,
+    error = Color(0xFFE57373),
+    onError = Color.Black,
+    errorContainer = Color(0xFF401010)
 )
 
 @Composable
 fun OpenKiwiTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     dynamicColor: Boolean = false,
-    accentColorKey: String = "green",
+    accentColorKey: String = "orange",
     fontFamilyKey: String = "default",
     content: @Composable () -> Unit
 ) {
@@ -132,7 +134,7 @@ fun OpenKiwiTheme(
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
-            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = true
+            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
         }
     }
 

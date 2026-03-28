@@ -15,6 +15,7 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
+import android.widget.ProgressBar
 import android.widget.TextView
 
 class ThinkingBubbleService : Service() {
@@ -87,26 +88,50 @@ class ThinkingBubbleService : Service() {
 
     @SuppressLint("ClickableViewAccessibility")
     private fun createBubble() {
+        val dp = resources.displayMetrics.density
+        val isDark = (resources.configuration.uiMode and
+            android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
+            android.content.res.Configuration.UI_MODE_NIGHT_YES
+
+        val bgColor = if (isDark) 0xFF161616.toInt() else 0xFFF9F8F6.toInt()
+        val borderColor = if (isDark) 0xFF333333.toInt() else 0xFFE2E0DC.toInt()
+        val txtColor = if (isDark) 0xFF999999.toInt() else 0xFF6E6E6E.toInt()
+
+        val container = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding((12 * dp).toInt(), (8 * dp).toInt(), (16 * dp).toInt(), (8 * dp).toInt())
+            background = GradientDrawable().apply {
+                setColor(bgColor)
+                cornerRadius = 8 * dp
+                setStroke((1 * dp).toInt(), borderColor)
+            }
+            elevation = 4 * dp
+        }
+
+        val spinner = ProgressBar(this, null, android.R.attr.progressBarStyleSmall).apply {
+            layoutParams = android.widget.LinearLayout.LayoutParams((14 * dp).toInt(), (14 * dp).toInt()).apply {
+                rightMargin = (8 * dp).toInt()
+            }
+        }
+        container.addView(spinner)
+
         textView = TextView(this).apply {
-            textSize = 12f
-            setTextColor(0xFF111827.toInt())
+            textSize = 13f
+            setTextColor(txtColor)
             isSingleLine = true
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
-            setPadding(28, 12, 28, 12)
-            background = GradientDrawable().apply {
-                setColor(0xEBFFFFFF.toInt()) // Apple-style translucent white
-                cornerRadius = 100f // Pill shape
-                setStroke(1, 0x1A000000.toInt()) // Subtle shadow/border
-            }
-            elevation = 16f
-            alpha = 1.0f
         }
-        bubbleView = textView
+        container.addView(textView)
+
+        bubbleView = container
 
         val layoutFlag = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
         else @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE
+
+        val displayHeight = resources.displayMetrics.heightPixels
 
         windowParams = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -114,9 +139,12 @@ class ThinkingBubbleService : Service() {
             layoutFlag,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
             PixelFormat.TRANSLUCENT
-        ).apply { gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL; y = 80 }
+        ).apply {
+            gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+            y = (80 * dp).toInt()
+        }
 
-        textView?.setOnTouchListener { _, event ->
+        container.setOnTouchListener { _, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
                     initialX = windowParams?.x ?: 0; initialY = windowParams?.y ?: 0
@@ -124,7 +152,7 @@ class ThinkingBubbleService : Service() {
                 }
                 MotionEvent.ACTION_MOVE -> {
                     windowParams?.x = initialX + (event.rawX - initialTouchX).toInt()
-                    windowParams?.y = initialY + (event.rawY - initialTouchY).toInt()
+                    windowParams?.y = initialY - (event.rawY - initialTouchY).toInt()
                     try { windowManager.updateViewLayout(bubbleView, windowParams) } catch (_: Exception) {}
                 }
             }

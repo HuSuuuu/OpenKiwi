@@ -73,7 +73,9 @@ class ModelRepository(private val modelConfigDao: ModelConfigDao) {
         reasoningEffort = reasoningEffort,
         isSmallModel = isSmallModel,
         includeWebSearchTool = includeWebSearchTool,
-        webSearchExclusive = webSearchExclusive
+        webSearchExclusive = webSearchExclusive,
+        providerType = providerType,
+        maxToolIterations = maxToolIterations
     )
 
     private fun ModelConfig.toEntity() = ModelConfigEntity(
@@ -102,6 +104,8 @@ class ModelRepository(private val modelConfigDao: ModelConfigDao) {
         reasoningEffort = reasoningEffort,
         isSmallModel = isSmallModel,
         includeWebSearchTool = includeWebSearchTool,
-        webSearchExclusive = webSearchExclusive
+        webSearchExclusive = webSearchExclusive,
+        providerType = providerType,
+        maxToolIterations = maxToolIterations
     )
 }

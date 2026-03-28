@@ -4,25 +4,22 @@ import com.orizon.openkiwi.core.tool.*
 import com.orizon.openkiwi.network.HtmlExtractor
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import org.json.JSONObject
 
 class WebSearchTool(private val httpClient: OkHttpClient) : Tool {
 
     override val definition = ToolDefinition(
         name = "web_search",
-        description = """Web search / fetch / extract. Prefer explicit action:
-- action=search + query=关键词（若只传 query 则自动视为 search）
-- action=fetch + url=完整链接
-- action=extract + url=链接（抽取正文与表格）
-search 需配置 search_api_url，否则返回提示；无 API 时用 web_fetch 或直接 fetch 已知 URL。""",
+        description = "Search the web, fetch a URL, or extract page content. Actions: search (needs search_api_url), fetch, extract.",
         category = ToolCategory.SEARCH.name,
         permissionLevel = PermissionLevel.NORMAL.name,
         parameters = mapOf(
-            "action" to ToolParamDef("string", "search | fetch | extract（可省略：仅有 query 时默认为 search，仅有 url 时默认为 fetch）",
+            "action" to ToolParamDef("string", "search, fetch, or extract",
                 required = false, enumValues = listOf("search", "fetch", "extract")),
-            "query" to ToolParamDef("string", "搜索关键词（action=search 时必填，除非只传本字段则等价于 search）"),
-            "url" to ToolParamDef("string", "URL to fetch/extract (for fetch/extract actions)"),
-            "search_api_url" to ToolParamDef("string", "Custom search API URL template with {query} placeholder"),
-            "max_results" to ToolParamDef("string", "Maximum results (default 5)")
+            "query" to ToolParamDef("string", "Search keywords"),
+            "url" to ToolParamDef("string", "URL to fetch or extract"),
+            "search_api_url" to ToolParamDef("string", "Search API URL template with {query}"),
+            "max_results" to ToolParamDef("string", "Max results (default 5)")
         ),
         requiredParams = emptyList(),
         returnDescription = "Search results or extracted web content",
@@ -48,14 +45,16 @@ search 需配置 search_api_url，否则返回提示；无 API 时用 web_fetch 
                 val apiUrl = params["search_api_url"]?.toString()
                 if (apiUrl != null) {
                     val reqUrl = apiUrl.replace("{query}", java.net.URLEncoder.encode(q, "UTF-8"))
-                    fetchUrl(reqUrl)
+                    val maxResults = params["max_results"]?.toString()?.toIntOrNull()?.coerceIn(1, 25) ?: 10
+                    fetchUrl(reqUrl, maxResults)
                 } else {
                     ToolResult("web_search", false, "", "No search API configured. Use fetch action with a direct URL, or provide search_api_url.")
                 }
             }
             "fetch" -> {
                 val u = url ?: return ToolResult("web_search", false, "", "Missing url")
-                fetchUrl(u)
+                val maxResults = params["max_results"]?.toString()?.toIntOrNull()?.coerceIn(1, 25) ?: 10
+                fetchUrl(u, maxResults)
             }
             "extract" -> {
                 val u = url ?: return ToolResult("web_search", false, "", "Missing url")
@@ -83,11 +82,13 @@ search 需配置 search_api_url，否则返回提示；无 API 时用 web_fetch 
         }
     }
 
-    private fun fetchUrl(url: String): ToolResult {
+    private fun fetchUrl(url: String, maxResults: Int = 10): ToolResult {
         return try {
-            val html = fetchRawHtml(url) ?: return ToolResult("web_search", false, "", "Fetch failed")
-            val extracted = HtmlExtractor.extractMainContent(html)
-            val title = HtmlExtractor.extractTitle(html)
+            val body = fetchRawHtml(url) ?: return ToolResult("web_search", false, "", "Fetch failed")
+            val fromJson = formatSearxngOrGenericSearchJson(body, maxResults)
+            if (fromJson != null) return ToolResult("web_search", true, fromJson)
+            val extracted = HtmlExtractor.extractMainContent(body)
+            val title = HtmlExtractor.extractTitle(body)
             val output = buildString {
                 if (title.isNotBlank()) appendLine("Title: $title\n---")
                 append(extracted.take(15_000))
@@ -95,6 +96,40 @@ search 需配置 search_api_url，否则返回提示；无 API 时用 web_fetch 
             ToolResult("web_search", true, output)
         } catch (e: Exception) {
             ToolResult("web_search", false, "", "Error: ${e.message}")
+        }
+    }
+
+    /**
+     * SearXNG `format=json` returns `{ "query": "...", "results": [ { "title","url","content",... } ] }`.
+     * If parsing fails or shape differs, returns null and caller falls back to HTML extraction.
+     */
+    private fun formatSearxngOrGenericSearchJson(body: String, maxResults: Int): String? {
+        val trimmed = body.trim()
+        if (!trimmed.startsWith("{")) return null
+        return try {
+            val root = JSONObject(trimmed)
+            val results = root.optJSONArray("results") ?: return null
+            if (results.length() == 0) {
+                return "（搜索无结果）query=${root.optString("query", "")}"
+            }
+            val n = minOf(maxResults, results.length(), 25)
+            buildString {
+                val q = root.optString("query", "")
+                if (q.isNotBlank()) appendLine("Query: $q")
+                appendLine("---")
+                for (i in 0 until n) {
+                    val o = results.optJSONObject(i) ?: continue
+                    val title = o.optString("title", "").trim()
+                    val link = o.optString("url", "").trim()
+                    val snippet = o.optString("content", o.optString("snippet", "")).trim()
+                    appendLine("${i + 1}. $title")
+                    if (link.isNotBlank()) appendLine("   URL: $link")
+                    if (snippet.isNotBlank()) appendLine("   $snippet")
+                    appendLine()
+                }
+            }.trimEnd()
+        } catch (_: Exception) {
+            null
         }
     }
 

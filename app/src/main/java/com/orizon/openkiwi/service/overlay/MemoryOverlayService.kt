@@ -27,9 +27,9 @@ class MemoryOverlayService : OverlayWindowManager() {
         }
     }
 
-    override val overlayTitle = "🧠 记忆"
+    override val overlayTitle = "\u8BB0\u5FC6"
     override val notificationId = 3004
-    override val overlayColor = 0xF01E293B.toInt()
+    override val overlayColor = 0xFF191919.toInt()
     override val initialYPosition = 650
 
     private var tokenLabel: TextView? = null
@@ -46,14 +46,14 @@ class MemoryOverlayService : OverlayWindowManager() {
 
     override fun onCreateContent(container: LinearLayout) {
         tokenLabel = TextView(this).apply {
-            textSize = 10f
-            setTextColor(0xFFD1D5DB.toInt())
-            text = "上下文 Token: -"
+            textSize = 12f
+            setTextColor(textColor())
+            text = "\u4E0A\u4E0B\u6587 Token: -"
         }
         container.addView(tokenLabel)
 
         tokenBar = TextView(this).apply {
-            textSize = 9f
+            textSize = 10f
             setTextColor(0xFF3FB950.toInt())
             text = ""
             layoutParams = LinearLayout.LayoutParams(
@@ -64,9 +64,9 @@ class MemoryOverlayService : OverlayWindowManager() {
         container.addView(tokenBar)
 
         val label = TextView(this).apply {
-            textSize = 10f
-            setTextColor(0xFF8B949E.toInt())
-            text = "最近检索记忆:"
+            textSize = 12f
+            setTextColor(mutedColor())
+            text = "\u6700\u8FD1\u68C0\u7D22\u8BB0\u5FC6:"
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
@@ -80,8 +80,8 @@ class MemoryOverlayService : OverlayWindowManager() {
         container.addView(memoryList)
 
         compressionLabel = TextView(this).apply {
-            textSize = 9f
-            setTextColor(0xFF6B7280.toInt())
+            textSize = 11f
+            setTextColor(mutedColor())
             text = ""
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,

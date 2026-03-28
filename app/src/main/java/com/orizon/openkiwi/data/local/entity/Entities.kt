@@ -64,7 +64,9 @@ data class ModelConfigEntity(
     val reasoningEffort: String = "low",
     val isSmallModel: Boolean = false,
     val includeWebSearchTool: Boolean = false,
-    val webSearchExclusive: Boolean = false
+    val webSearchExclusive: Boolean = false,
+    val providerType: String = "openai",
+    val maxToolIterations: Int = 10
 )
 
 @Entity(tableName = "memories")
@@ -154,6 +156,19 @@ data class ScheduledTaskEntity(
     val enabled: Boolean = true,
     val sessionId: String? = null,
     val lastRunAt: Long = 0L,
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+@Entity(tableName = "mcp_server_configs")
+data class McpServerConfigEntity(
+    @PrimaryKey val id: String,
+    val name: String,
+    val transportType: String = "sse",
+    val url: String = "",
+    val command: String = "",
+    val args: String = "[]",
+    val env: String = "{}",
+    val isEnabled: Boolean = true,
     val createdAt: Long = System.currentTimeMillis()
 )
 

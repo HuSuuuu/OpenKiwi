@@ -21,3 +21,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "OpenKiwi"
 include(":app")
+include(":plugin-sdk")

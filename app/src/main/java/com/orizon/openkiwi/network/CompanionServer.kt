@@ -31,7 +31,8 @@ class CompanionServer(
     private val feishuApiClient: FeishuApiClient? = null,
     private val userPreferences: com.orizon.openkiwi.data.preferences.UserPreferences? = null,
     val port: Int = 8765,
-    val feishuEventHandler: FeishuEventHandler = FeishuEventHandler(agentEngine, chatRepository, feishuApiClient)
+    val feishuEventHandler: FeishuEventHandler = FeishuEventHandler(agentEngine, chatRepository, feishuApiClient),
+    var apiRouter: ApiRouter? = null
 ) {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     private val isRunning = AtomicBoolean(false)
@@ -119,18 +120,26 @@ class CompanionServer(
             val path = requestLine.split(" ").getOrNull(1) ?: "/"
             val method = requestLine.split(" ").getOrNull(0) ?: "GET"
 
+            val contentLength = headers["content-length"]?.toIntOrNull() ?: 0
+            val bodyChars = if (contentLength > 0) {
+                CharArray(contentLength).also { input.read(it, 0, contentLength) }
+            } else null
+            val bodyStr = bodyChars?.let { String(it) } ?: ""
+
+            if (path.startsWith("/api/v1/")) {
+                val router = apiRouter
+                if (router != null) {
+                    val apiRequest = ApiRouter.HttpRequest(method, path, headers, bodyStr)
+                    router.handleRequest(apiRequest, output)
+                    socket.close()
+                    return@withContext
+                }
+            }
+
             if (method == "POST" && path == "/api/send") {
-                val contentLength = headers["content-length"]?.toIntOrNull() ?: 0
-                val bodyChars = CharArray(contentLength)
-                input.read(bodyChars, 0, contentLength)
-                val body = String(bodyChars)
-                handleApiSend(output, body)
+                handleApiSend(output, bodyStr)
             } else if (method == "POST" && path == "/api/feishu/event") {
-                val contentLength = headers["content-length"]?.toIntOrNull() ?: 0
-                val bodyChars = CharArray(contentLength)
-                input.read(bodyChars, 0, contentLength)
-                val body = String(bodyChars)
-                handleFeishuEvent(output, body)
+                handleFeishuEvent(output, bodyStr)
             } else {
                 val html = getWebConsoleHtml()
                 val response = "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: ${html.toByteArray().size}\r\nConnection: close\r\n\r\n"

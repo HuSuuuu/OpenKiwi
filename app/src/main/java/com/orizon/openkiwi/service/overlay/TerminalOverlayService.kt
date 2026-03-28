@@ -58,9 +58,9 @@ class TerminalOverlayService : OverlayWindowManager() {
     data class TerminalOutput(val text: String, val isError: Boolean = false)
     enum class ExecutionStatus { RUNNING, SUCCESS, FAILED }
 
-    override val overlayTitle = "⬛ 终端"
+    override val overlayTitle = "\u7EC8\u7AEF"
     override val notificationId = 3001
-    override val overlayColor = 0xF00D1117.toInt()
+    override val overlayColor = 0xFF191919.toInt()
     override val initialYPosition = 200
 
     private var commandText: TextView? = null
@@ -81,9 +81,9 @@ class TerminalOverlayService : OverlayWindowManager() {
 
     override fun onCreateContent(container: LinearLayout) {
         commandText = TextView(this).apply {
-            textSize = 10f
+            textSize = 12f
             typeface = Typeface.MONOSPACE
-            setTextColor(0xFF58A6FF.toInt())
+            setTextColor(mutedColor())
             text = "$ "
             maxLines = 2
         }
@@ -95,18 +95,18 @@ class TerminalOverlayService : OverlayWindowManager() {
             ).apply { topMargin = dp(4) }
         }
         outputText = TextView(this).apply {
-            textSize = 9f
+            textSize = 11f
             typeface = Typeface.MONOSPACE
-            setTextColor(0xFFB0B0B0.toInt())
+            setTextColor(textColor())
             text = ""
         }
         outputScroll!!.addView(outputText)
         container.addView(outputScroll)
 
         statusText = TextView(this).apply {
-            textSize = 10f
-            setTextColor(0xFF8B949E.toInt())
-            text = "就绪"
+            textSize = 11f
+            setTextColor(mutedColor())
+            text = "\u5C31\u7EEA"
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT

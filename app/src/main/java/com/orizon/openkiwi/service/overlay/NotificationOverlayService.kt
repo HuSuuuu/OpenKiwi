@@ -45,9 +45,9 @@ class NotificationOverlayService : OverlayWindowManager() {
         fun resetDismissed() { userDismissed = false }
     }
 
-    override val overlayTitle = "🔔 通知"
+    override val overlayTitle = "\u901A\u77E5"
     override val notificationId = 3003
-    override val overlayColor = 0xF0162447.toInt()
+    override val overlayColor = 0xFF191919.toInt()
     override val initialYPosition = 500
 
     private var scrollView: ScrollView? = null
@@ -90,37 +90,44 @@ class NotificationOverlayService : OverlayWindowManager() {
 
     private fun rebuildList() {
         listContainer?.removeAllViews()
-        val codeRegex = Regex("""(?:验证码|code|码)[\s:：]*(\d{4,8})""", RegexOption.IGNORE_CASE)
+        val codeRegex = Regex("""(?:\u9A8C\u8BC1\u7801|code|\u7801)[\s:\uFF1A]*(\d{4,8})""", RegexOption.IGNORE_CASE)
 
         for (item in items.take(5)) {
             val row = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
+                orientation = LinearLayout.HORIZONTAL
                 setPadding(0, dp(4), 0, dp(4))
             }
 
-            val header = TextView(this).apply {
-                text = "${item.app}  ${item.time}"
-                textSize = 9f
-                setTextColor(0xFF6B7280.toInt())
+            val contentCol = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }
-            row.addView(header)
 
             val titleView = TextView(this).apply {
-                text = item.title
-                textSize = 10f
-                setTextColor(0xFFE0E0E0.toInt())
+                text = "${item.app} \u00B7 ${item.title}"
+                textSize = 12f
+                setTextColor(textColor())
                 maxLines = 1
             }
-            row.addView(titleView)
+            contentCol.addView(titleView)
 
             val codeMatch = codeRegex.find(item.content)
             val bodyView = TextView(this).apply {
-                text = if (codeMatch != null) "📋 验证码: ${codeMatch.groupValues[1]}" else item.content.take(80)
-                textSize = 10f
-                setTextColor(if (codeMatch != null) 0xFFFBBF24.toInt() else 0xFFB0B0B0.toInt())
+                text = if (codeMatch != null) "\u9A8C\u8BC1\u7801: ${codeMatch.groupValues[1]}" else item.content.take(80)
+                textSize = 11f
+                setTextColor(if (codeMatch != null) 0xFFFBBF24.toInt() else mutedColor())
                 maxLines = 2
             }
-            row.addView(bodyView)
+            contentCol.addView(bodyView)
+
+            row.addView(contentCol)
+
+            val timeView = TextView(this).apply {
+                text = item.time
+                textSize = 10f
+                setTextColor(mutedColor())
+            }
+            row.addView(timeView)
 
             listContainer?.addView(row)
         }

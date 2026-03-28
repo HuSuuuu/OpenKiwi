@@ -35,5 +35,8 @@ data class ModelConfig(
     /**
      * 为 true 时仅下发 web_search，不下发本地 function 工具（适配「联网插件与 FC 互斥」类限制）。
      */
-    val webSearchExclusive: Boolean = false
+    val webSearchExclusive: Boolean = false,
+    /** LLM provider type: "openai" (default), "anthropic", "gemini". */
+    val providerType: String = "openai",
+    val maxToolIterations: Int = 10
 )

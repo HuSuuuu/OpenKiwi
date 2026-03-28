@@ -34,6 +34,7 @@ import com.orizon.openkiwi.ui.voice.VoiceViewModel
 import com.orizon.openkiwi.ui.schedule.ScheduleScreen
 import com.orizon.openkiwi.ui.schedule.ScheduleViewModel
 import com.orizon.openkiwi.ui.recipe.RecipeScreen
+import com.orizon.openkiwi.ui.settings.McpSettingsScreen
 import com.orizon.openkiwi.ui.recipe.RecipeViewModel
 
 object Routes {
@@ -52,6 +53,16 @@ object Routes {
     const val ARTIFACTS = "artifacts"
     const val SCHEDULE = "schedule"
     const val RECIPES = "recipes"
+    const val MCP_SETTINGS = "mcp_settings"
+}
+
+private const val KEY_REOPEN_DRAWER = "reopen_drawer"
+
+private fun backAndReopenDrawer(navController: androidx.navigation.NavController) {
+    navController.previousBackStackEntry
+        ?.savedStateHandle
+        ?.set(KEY_REOPEN_DRAWER, true)
+    navController.popBackStack()
 }
 
 @Composable
@@ -60,7 +71,7 @@ fun AppNavigation() {
     val container = OpenKiwiApp.instance.container
 
     NavHost(navController = navController, startDestination = Routes.CHAT) {
-        composable(Routes.CHAT) {
+        composable(Routes.CHAT) { backStackEntry ->
             val vm: ChatViewModel = viewModel(
                 factory = ChatViewModel.Factory(
                     container.agentEngine,
@@ -69,8 +80,16 @@ fun AppNavigation() {
                     OpenKiwiApp.instance.applicationContext
                 )
             )
+
+            val shouldReopenDrawer = backStackEntry.savedStateHandle
+                .get<Boolean>(KEY_REOPEN_DRAWER) == true
+            if (shouldReopenDrawer) {
+                backStackEntry.savedStateHandle.remove<Boolean>(KEY_REOPEN_DRAWER)
+            }
+
             ChatScreen(
                 viewModel = vm,
+                reopenDrawer = shouldReopenDrawer,
                 onNavigateToSettings = { navController.navigate(Routes.SETTINGS) { launchSingleTop = true } },
                 onNavigateToModelConfig = { navController.navigate(Routes.MODEL_CONFIG) { launchSingleTop = true } },
                 onNavigateToTasks = { navController.navigate(Routes.TASKS) { launchSingleTop = true } },
@@ -84,13 +103,14 @@ fun AppNavigation() {
                 onNavigateToTools = { navController.navigate(Routes.TOOLS) { launchSingleTop = true } },
                 onNavigateToArtifacts = { navController.navigate(Routes.ARTIFACTS) { launchSingleTop = true } },
                 onNavigateToSchedule = { navController.navigate(Routes.SCHEDULE) { launchSingleTop = true } },
-                onNavigateToRecipes = { navController.navigate(Routes.RECIPES) { launchSingleTop = true } }
+                onNavigateToRecipes = { navController.navigate(Routes.RECIPES) { launchSingleTop = true } },
+                onNavigateToMcp = { navController.navigate(Routes.MCP_SETTINGS) { launchSingleTop = true } }
             )
         }
 
         composable(Routes.SETTINGS) {
             SettingsScreen(
-                onBack = { navController.popBackStack() },
+                onBack = { backAndReopenDrawer(navController) },
                 onNavigateToModelConfig = { navController.navigate(Routes.MODEL_CONFIG) }
             )
         }
@@ -106,54 +126,54 @@ fun AppNavigation() {
             val vm: TaskViewModel = viewModel(
                 factory = TaskViewModel.Factory(container.database.auditLogDao())
             )
-            TaskScreen(viewModel = vm, onBack = { navController.popBackStack() })
+            TaskScreen(viewModel = vm, onBack = { backAndReopenDrawer(navController) })
         }
 
         composable(Routes.MEMORY) {
             val vm: MemoryViewModel = viewModel(
                 factory = MemoryViewModel.Factory(container.memoryManager, container.database.memoryDao())
             )
-            MemoryScreen(viewModel = vm, onBack = { navController.popBackStack() })
+            MemoryScreen(viewModel = vm, onBack = { backAndReopenDrawer(navController) })
         }
 
         composable(Routes.SKILLS) {
             val vm: SkillsViewModel = viewModel(
                 factory = SkillsViewModel.Factory(container.skillManager)
             )
-            SkillsScreen(viewModel = vm, onBack = { navController.popBackStack() })
+            SkillsScreen(viewModel = vm, onBack = { backAndReopenDrawer(navController) })
         }
 
         composable(Routes.DEVICES) {
             val vm: DeviceViewModel = viewModel(
                 factory = DeviceViewModel.Factory(container.deviceDiscovery, container.usbHostManager)
             )
-            DeviceScreen(viewModel = vm, onBack = { navController.popBackStack() }, companionServer = container.companionServer)
+            DeviceScreen(viewModel = vm, onBack = { backAndReopenDrawer(navController) }, companionServer = container.companionServer)
         }
 
         composable(Routes.AUDIT_LOG) {
             val vm: AuditLogViewModel = viewModel(
                 factory = AuditLogViewModel.Factory(container.database.auditLogDao())
             )
-            AuditLogScreen(viewModel = vm, onBack = { navController.popBackStack() })
+            AuditLogScreen(viewModel = vm, onBack = { backAndReopenDrawer(navController) })
         }
 
         composable(Routes.TERMINAL) {
-            val vm: TerminalViewModel = viewModel(factory = TerminalViewModel.Factory())
-            TerminalScreen(viewModel = vm, onBack = { navController.popBackStack() })
+            val vm: TerminalViewModel = viewModel(factory = TerminalViewModel.Factory(container.terminalSessionManager))
+            TerminalScreen(viewModel = vm, onBack = { backAndReopenDrawer(navController) })
         }
 
         composable(Routes.VOICE) {
             val vm: VoiceViewModel = viewModel(
                 factory = VoiceViewModel.Factory(container.volcanoVoiceClient, container.userPreferences)
             )
-            VoiceScreen(viewModel = vm, onBack = { navController.popBackStack() })
+            VoiceScreen(viewModel = vm, onBack = { backAndReopenDrawer(navController) })
         }
 
         composable(Routes.NOTES) {
             val vm: NoteViewModel = viewModel(
                 factory = NoteViewModel.Factory(container.database.noteDao())
             )
-            NoteScreen(viewModel = vm, onBack = { navController.popBackStack() })
+            NoteScreen(viewModel = vm, onBack = { backAndReopenDrawer(navController) })
         }
 
         composable(Routes.TOOLS) {
@@ -163,14 +183,14 @@ fun AppNavigation() {
                     container.toolRegistry
                 )
             )
-            ToolScreen(viewModel = vm, onBack = { navController.popBackStack() })
+            ToolScreen(viewModel = vm, onBack = { backAndReopenDrawer(navController) })
         }
 
         composable(Routes.ARTIFACTS) {
             val vm: ArtifactViewModel = viewModel(
                 factory = ArtifactViewModel.Factory(container.artifactRepository)
             )
-            ArtifactScreen(viewModel = vm, onBack = { navController.popBackStack() })
+            ArtifactScreen(viewModel = vm, onBack = { backAndReopenDrawer(navController) })
         }
 
         composable(Routes.SCHEDULE) {
@@ -180,7 +200,7 @@ fun AppNavigation() {
                     container.scheduleManager
                 )
             )
-            ScheduleScreen(viewModel = vm, onBack = { navController.popBackStack() })
+            ScheduleScreen(viewModel = vm, onBack = { backAndReopenDrawer(navController) })
         }
 
         composable(Routes.RECIPES) {
@@ -190,7 +210,15 @@ fun AppNavigation() {
                     container.recipeExecutor
                 )
             )
-            RecipeScreen(viewModel = vm, onBack = { navController.popBackStack() })
+            RecipeScreen(viewModel = vm, onBack = { backAndReopenDrawer(navController) })
+        }
+
+        composable(Routes.MCP_SETTINGS) {
+            McpSettingsScreen(
+                mcpManager = container.mcpManager,
+                mcpServerRepository = container.mcpServerRepository,
+                onBack = { backAndReopenDrawer(navController) }
+            )
         }
     }
 }

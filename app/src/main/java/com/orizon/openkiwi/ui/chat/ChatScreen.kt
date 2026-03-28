@@ -9,7 +9,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
@@ -24,6 +23,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
 import com.orizon.openkiwi.core.security.EmergencyStop
 import com.orizon.openkiwi.data.local.entity.SessionEntity
@@ -47,17 +47,15 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import com.orizon.openkiwi.util.ArtifactOpener
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.foundation.clickable
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.SolidColor
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatScreen(
     viewModel: ChatViewModel,
+    reopenDrawer: Boolean = false,
     onNavigateToSettings: () -> Unit,
     onNavigateToModelConfig: () -> Unit,
     onNavigateToTasks: () -> Unit = {},
@@ -71,7 +69,8 @@ fun ChatScreen(
     onNavigateToTools: () -> Unit = {},
     onNavigateToArtifacts: () -> Unit = {},
     onNavigateToSchedule: () -> Unit = {},
-    onNavigateToRecipes: () -> Unit = {}
+    onNavigateToRecipes: () -> Unit = {},
+    onNavigateToMcp: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val sessions by viewModel.sessions.collectAsState(initial = emptyList())
@@ -103,6 +102,12 @@ fun ChatScreen(
     LaunchedEffect(Unit) {
         val setupDone = prefs.setupCompleted.first()
         if (!setupDone) showSetupGuide = true
+    }
+
+    LaunchedEffect(reopenDrawer) {
+        if (reopenDrawer) {
+            drawerState.open()
+        }
     }
 
     if (showSetupGuide) {
@@ -142,71 +147,29 @@ fun ChatScreen(
                 onArtifactsClick = { scope.launch { drawerState.snapTo(DrawerValue.Closed); onNavigateToArtifacts() } },
                 onScheduleClick = { scope.launch { drawerState.snapTo(DrawerValue.Closed); onNavigateToSchedule() } },
                 onRecipesClick = { scope.launch { drawerState.snapTo(DrawerValue.Closed); onNavigateToRecipes() } },
+                onMcpClick = { scope.launch { drawerState.snapTo(DrawerValue.Closed); onNavigateToMcp() } },
                 pendingNoteCount = pendingNoteCount
             )
         }
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(com.orizon.openkiwi.ui.theme.LuminaBackground)
-                .drawBehind {
-                    val w = size.width
-                    val h = size.height
-                    
-                    drawCircle(
-                        brush = Brush.radialGradient(
-                            colors = listOf(
-                                Color(0x330A84FF),
-                                Color.Transparent
-                            ),
-                            center = Offset(w * 0.15f, h * 0.50f),
-                            radius = w * 0.6f
-                        ),
-                        radius = w * 0.6f,
-                        center = Offset(w * 0.15f, h * 0.50f)
-                    )
-                    
-                    drawCircle(
-                        brush = Brush.radialGradient(
-                            colors = listOf(
-                                Color(0x3334C759),
-                                Color.Transparent
-                            ),
-                            center = Offset(w * 0.85f, h * 0.30f),
-                            radius = w * 0.6f
-                        ),
-                        radius = w * 0.6f,
-                        center = Offset(w * 0.85f, h * 0.30f)
-                    )
-                }
-        ) {
-            Scaffold(
-                containerColor = Color.Transparent,
+        Scaffold(
+                containerColor = MaterialTheme.colorScheme.background,
                 topBar = {
-                    Surface(
-                        color = com.orizon.openkiwi.ui.theme.LuminaGlassDark,
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .border(
-                                width = 1.dp,
-                                color = com.orizon.openkiwi.ui.theme.LuminaGlassBorder,
-                                shape = androidx.compose.ui.graphics.RectangleShape
-                            )
+                            .background(MaterialTheme.colorScheme.background)
                     ) {
-                        // IconButton 默认最小触摸区 48dp，会与自定义小尺寸重叠；关闭后按真实 size 排版
                         CompositionLocalProvider(LocalMinimumInteractiveComponentEnforcement provides false) {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    // 状态栏 + 刘海/挖孔（避免右上角相机孔遮挡按钮）
                                     .windowInsetsPadding(
                                         WindowInsets.statusBars
                                             .union(WindowInsets.displayCutout)
                                             .only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)
                                     )
-                                    // 右侧略多留空，兼容部分机型挖孔报告不全
-                                    .padding(start = 18.dp, end = 22.dp, top = 10.dp, bottom = 10.dp),
+                                    .padding(horizontal = 20.dp, vertical = 12.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 IconButton(
@@ -215,81 +178,33 @@ fun ChatScreen(
                                             scope.launch { drawerState.open() }
                                         }
                                     },
-                                    modifier = Modifier
-                                        .size(40.dp)
-                                        .background(com.orizon.openkiwi.ui.theme.LuminaGlassLight, CircleShape)
-                                        .border(1.dp, com.orizon.openkiwi.ui.theme.LuminaGlassBorder, CircleShape)
+                                    modifier = Modifier.size(36.dp)
                                 ) {
-                                    BadgedBox(
-                                        badge = {
-                                            if (pendingNoteCount > 0) {
-                                                Badge(
-                                                    containerColor = MaterialTheme.colorScheme.error,
-                                                    contentColor = MaterialTheme.colorScheme.onError
-                                                ) {
-                                                    Text(
-                                                        if (pendingNoteCount > 99) "99+" else pendingNoteCount.toString(),
-                                                        style = MaterialTheme.typography.labelSmall
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    ) {
-                                        Icon(Icons.Default.Menu, null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurface)
-                                    }
+                                    Icon(Icons.Default.Menu, null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurface)
                                 }
 
-                                Spacer(Modifier.width(20.dp))
+                                Spacer(Modifier.weight(1f))
 
-                                Column(
-                                    modifier = Modifier.weight(1f),
-                                    horizontalAlignment = Alignment.CenterHorizontally
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(
-                                            "OpenKiwi",
-                                            maxLines = 1,
-                                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold),
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
-                                        Spacer(Modifier.width(6.dp))
-                                        Icon(
-                                            Icons.Filled.CheckCircle,
-                                            contentDescription = null,
-                                            tint = Color(0xFF4285F4),
-                                            modifier = Modifier.size(13.dp)
-                                        )
-                                    }
-                                    Text(
-                                        "Always active",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                                    )
-                                }
+                                Text(
+                                    "OpenKiwi",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
 
-                                Spacer(Modifier.width(20.dp))
+                                Spacer(Modifier.weight(1f))
 
-                                IconButton(
-                                    onClick = onNavigateToModelConfig,
-                                    modifier = Modifier
-                                        .size(40.dp)
-                                        .background(com.orizon.openkiwi.ui.theme.LuminaGlassLight, CircleShape)
-                                        .border(1.dp, com.orizon.openkiwi.ui.theme.LuminaGlassBorder, CircleShape)
-                                ) {
-                                    Icon(Icons.Outlined.Tune, null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurface)
-                                }
-                                Spacer(Modifier.width(18.dp))
                                 IconButton(
                                     onClick = { viewModel.createNewSession() },
-                                    modifier = Modifier
-                                        .size(40.dp)
-                                        .background(com.orizon.openkiwi.ui.theme.LuminaGlassLight, CircleShape)
-                                        .border(1.dp, com.orizon.openkiwi.ui.theme.LuminaGlassBorder, CircleShape)
+                                    modifier = Modifier.size(36.dp)
                                 ) {
-                                    Icon(Icons.Outlined.Edit, null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurface)
+                                    Icon(Icons.Outlined.Edit, null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }
                         }
+                        HorizontalDivider(
+                            thickness = 0.5.dp,
+                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
+                        )
                     }
                 }
         ) { padding ->
@@ -301,70 +216,69 @@ fun ChatScreen(
                     .imePadding()
             ) {
                 if (emergencyStopped) {
-                    Surface(
-                        color = MaterialTheme.colorScheme.errorContainer,
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-                        shape = RoundedCornerShape(8.dp)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(
-                            modifier = Modifier.padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                "紧急停止已激活",
-                                style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.error,
-                                modifier = Modifier.weight(1f)
-                            )
-                            TextButton(onClick = { EmergencyStop.reset() }) { Text("恢复") }
-                        }
+                        Text(
+                            "\u7D27\u6025\u505C\u6B62\u5DF2\u6FC0\u6D3B",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(onClick = { EmergencyStop.reset() }) { Text("\u6062\u590D") }
                     }
+                    HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 20.dp),
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.error.copy(alpha = 0.2f)
+                    )
                 }
 
                 if (!accessibilityRunning) {
-                    Surface(
-                        color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.7f),
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-                        shape = RoundedCornerShape(8.dp)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                Icons.Outlined.AccessibilityNew,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp),
-                                tint = MaterialTheme.colorScheme.onTertiaryContainer
+                        Text(
+                            "\u65E0\u969C\u788D\u670D\u52A1\u672A\u5F00\u542F",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(onClick = {
+                            context.startActivity(
+                                Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                             )
-                            Spacer(Modifier.width(8.dp))
-                            Text(
-                                "无障碍服务未开启，屏幕操作功能不可用",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onTertiaryContainer,
-                                modifier = Modifier.weight(1f)
-                            )
-                            TextButton(onClick = {
-                                context.startActivity(
-                                    Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-                                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                )
-                            }) { Text("去开启") }
-                        }
+                        }) { Text("\u53BB\u5F00\u542F") }
                     }
+                    HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 20.dp),
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+                    )
                 }
 
                 uiState.error?.let { error ->
-                    Surface(
-                        color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.6f),
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-                        shape = RoundedCornerShape(8.dp)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text(error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
-                            IconButton(onClick = { viewModel.clearError() }, modifier = Modifier.size(20.dp)) {
-                                Icon(Icons.Default.Close, null, modifier = Modifier.size(14.dp))
-                            }
+                        Text(
+                            error,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.weight(1f)
+                        )
+                        IconButton(onClick = { viewModel.clearError() }, modifier = Modifier.size(20.dp)) {
+                            Icon(Icons.Default.Close, null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
@@ -379,6 +293,10 @@ fun ChatScreen(
                     onBranch = viewModel::branchFromMessage,
                     onEditAsDraft = viewModel::editMessageAsDraft,
                     onUseStreamingAsDraft = viewModel::updateDraft,
+                    onStopGeneration = {
+                        EmergencyStop.activate()
+                        viewModel.stopGeneration()
+                    },
                     showDevWorkspace = showDevWorkspace,
                     waitingSeconds = waitingSeconds,
                     onOpenArtifact = { artifact ->
@@ -409,7 +327,6 @@ fun ChatScreen(
                 )
             }
         }
-        }
     }
 }
 
@@ -430,6 +347,7 @@ private fun MessageList(
     onBranch: (Long) -> Unit,
     onEditAsDraft: (Long) -> Unit,
     onUseStreamingAsDraft: (String) -> Unit,
+    onStopGeneration: () -> Unit,
     showDevWorkspace: Boolean,
     waitingSeconds: Int,
     onOpenArtifact: (ArtifactUiModel) -> Unit,
@@ -488,17 +406,27 @@ private fun MessageList(
 
     if (reversedMessages.isEmpty() && reversedTurns.isEmpty() && !isProcessing) {
         Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.padding(horizontal = 48.dp)
+            ) {
                 Text(
-                    "K",
+                    "OpenKiwi",
                     style = MaterialTheme.typography.headlineLarge,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f),
+                    letterSpacing = 3.sp
+                )
+                Spacer(Modifier.height(16.dp))
+                HorizontalDivider(
+                    modifier = Modifier.width(60.dp),
+                    thickness = 0.5.dp,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
                 )
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(16.dp))
                 Text(
-                    "有什么可以帮你？",
+                    "\u6709\u4EC0\u4E48\u53EF\u4EE5\u5E2E\u4F60\uFF1F",
                     style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f)
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.25f)
                 )
             }
         }
@@ -519,6 +447,8 @@ private fun MessageList(
                                 thinking = message.thinking,
                                 toolCalls = activeToolCalls,
                                 onUseAsDraft = onUseStreamingAsDraft,
+                                onStopGeneration = onStopGeneration,
+                                isProcessing = isProcessing,
                                 showDevWorkspace = showDevWorkspace
                             )
                         message.isStreaming -> MessageBubble(message = message)
@@ -605,6 +535,8 @@ private fun StreamingMessageWithToolCalls(
     thinking: String = "",
     toolCalls: List<ToolCallStatus>,
     onUseAsDraft: (String) -> Unit,
+    onStopGeneration: () -> Unit,
+    isProcessing: Boolean,
     showDevWorkspace: Boolean
 ) {
     val codeBlock = remember(textContent) { extractLatestCodeBlock(textContent) }
@@ -652,10 +584,11 @@ private fun StreamingMessageWithToolCalls(
                         modifier = Modifier.height(28.dp)
                     ) { Text("继续编辑", style = MaterialTheme.typography.labelSmall) }
                     OutlinedButton(
-                        onClick = {},
+                        onClick = onStopGeneration,
+                        enabled = isProcessing,
                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
                         modifier = Modifier.height(28.dp)
-                    ) { Text("接受", style = MaterialTheme.typography.labelSmall) }
+                    ) { Text("停止并接受", style = MaterialTheme.typography.labelSmall) }
                 }
             }
         }
@@ -670,17 +603,16 @@ private fun InlineDevWorkspace(
     onUseCodeAsDraft: () -> Unit
 ) {
     Surface(
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        shape = RoundedCornerShape(8.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Outlined.Terminal, null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
+                Icon(Icons.Outlined.Terminal, null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.width(6.dp))
-                Text("对话内工作区", style = MaterialTheme.typography.labelLarge)
+                Text("\u5DE5\u4F5C\u533A", style = MaterialTheme.typography.labelLarge)
                 Spacer(Modifier.weight(1f))
-                Text("编辑器 + 终端", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f))
             }
 
             Spacer(Modifier.height(8.dp))
@@ -833,186 +765,175 @@ private fun ChatInputBar(
         }
     }
 
-    Box(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 16.dp, end = 16.dp, bottom = 16.dp, top = 8.dp)
+            .padding(start = 20.dp, end = 20.dp, bottom = 16.dp, top = 4.dp)
     ) {
-        Column {
-            // Attachment indicators
-            val hasAttachments = attachedImageUri != null || attachedFileUri != null || attachedVideoUri != null
-            if (hasAttachments) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    if (attachedImageUri != null) {
-                        AttachmentChip(
+        val hasAttachments = attachedImageUri != null || attachedFileUri != null || attachedVideoUri != null
+        if (hasAttachments) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                if (attachedImageUri != null) {
+                    AttachmentChip(
+                        icon = Icons.Outlined.Image,
+                        label = "\u56FE\u7247\u5DF2\u9644\u52A0",
+                        tint = MaterialTheme.colorScheme.primary,
+                        onRemove = { attachedImageUri = null }
+                    )
+                }
+                if (attachedFileUri != null) {
+                    AttachmentChip(
+                        icon = Icons.Outlined.InsertDriveFile,
+                        label = attachedFileName.take(20),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        onRemove = { attachedFileUri = null; attachedFileName = "" }
+                    )
+                }
+                if (attachedVideoUri != null) {
+                    AttachmentChip(
+                        icon = Icons.Outlined.Videocam,
+                        label = attachedVideoName.take(20),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        onRemove = { attachedVideoUri = null; attachedVideoName = "" }
+                    )
+                }
+            }
+        }
+
+        var showMenu by remember { mutableStateOf(false) }
+
+        CompositionLocalProvider(LocalMinimumInteractiveComponentEnforcement provides false) {
+            Row(
+                verticalAlignment = Alignment.Bottom,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Box {
+                    IconButton(
+                        onClick = { showMenu = !showMenu },
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            Icons.Outlined.Add,
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    DropdownMenu(
+                        expanded = showMenu,
+                        onDismissRequest = { showMenu = false },
+                        modifier = Modifier.width(160.dp)
+                    ) {
+                        InputMenuItem(
                             icon = Icons.Outlined.Image,
-                            label = "图片已附加",
-                            tint = MaterialTheme.colorScheme.primary,
-                            onRemove = { attachedImageUri = null }
+                            label = "\u56FE\u7247",
+                            onClick = { imagePickerLauncher.launch("image/*"); showMenu = false }
                         )
-                    }
-                    if (attachedFileUri != null) {
-                        AttachmentChip(
-                            icon = Icons.Outlined.InsertDriveFile,
-                            label = attachedFileName.take(20),
-                            tint = MaterialTheme.colorScheme.tertiary,
-                            onRemove = { attachedFileUri = null; attachedFileName = "" }
-                        )
-                    }
-                    if (attachedVideoUri != null) {
-                        AttachmentChip(
+                        InputMenuItem(
                             icon = Icons.Outlined.Videocam,
-                            label = attachedVideoName.take(20),
-                            tint = MaterialTheme.colorScheme.secondary,
-                            onRemove = { attachedVideoUri = null; attachedVideoName = "" }
+                            label = "\u89C6\u9891",
+                            onClick = { videoPickerLauncher.launch("video/*"); showMenu = false }
+                        )
+                        InputMenuItem(
+                            icon = Icons.Outlined.AttachFile,
+                            label = "\u6587\u4EF6",
+                            onClick = { filePickerLauncher.launch(arrayOf("*/*")); showMenu = false }
+                        )
+                        InputMenuItem(
+                            icon = if (isListening) Icons.Default.MicOff else Icons.Outlined.Mic,
+                            label = if (isListening) "\u505C\u6B62\u5F55\u97F3" else "\u8BED\u97F3\u8F93\u5165",
+                            active = isListening,
+                            onClick = { onMicClick(); showMenu = false }
+                        )
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                        InputMenuItem(
+                            icon = Icons.Outlined.Adb,
+                            label = "\u5BC4\u751F\u6A21\u5F0F",
+                            active = parasiticEnabled,
+                            showToggle = true,
+                            onClick = {
+                                parasiticEnabled = !parasiticEnabled
+                                com.orizon.openkiwi.core.agent.ParasiticQueryTool.enabled = parasiticEnabled
+                            }
                         )
                     }
                 }
-            }
 
-            // Input bar with left-side menu
-            var showMenu by remember { mutableStateOf(false) }
+                Spacer(Modifier.width(8.dp))
 
-            Surface(
-                color = com.orizon.openkiwi.ui.theme.LuminaGlassDark,
-                shape = RoundedCornerShape(24.dp),
-                border = BorderStroke(1.dp, com.orizon.openkiwi.ui.theme.LuminaGlassBorder),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                CompositionLocalProvider(LocalMinimumInteractiveComponentEnforcement provides false) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(start = 12.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    // Left-side "+" menu trigger
-                    Box {
-                        IconButton(
-                            onClick = { showMenu = !showMenu },
-                            modifier = Modifier.size(40.dp)
-                        ) {
-                            Icon(
-                                if (showMenu) Icons.Default.Close else Icons.Default.Add,
-                                contentDescription = null,
-                                modifier = Modifier.size(22.dp),
-                                tint = if (showMenu) MaterialTheme.colorScheme.primary
-                                else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                            )
-                        }
-
-                        DropdownMenu(
-                            expanded = showMenu,
-                            onDismissRequest = { showMenu = false },
-                            modifier = Modifier.width(160.dp)
-                        ) {
-                            InputMenuItem(
-                                icon = Icons.Outlined.Image,
-                                label = "图片",
-                                onClick = { imagePickerLauncher.launch("image/*"); showMenu = false }
-                            )
-                            InputMenuItem(
-                                icon = Icons.Outlined.Videocam,
-                                label = "视频",
-                                onClick = { videoPickerLauncher.launch("video/*"); showMenu = false }
-                            )
-                            InputMenuItem(
-                                icon = Icons.Outlined.AttachFile,
-                                label = "文件",
-                                onClick = { filePickerLauncher.launch(arrayOf("*/*")); showMenu = false }
-                            )
-                            InputMenuItem(
-                                icon = if (isListening) Icons.Default.MicOff else Icons.Outlined.Mic,
-                                label = if (isListening) "停止录音" else "语音输入",
-                                active = isListening,
-                                onClick = { onMicClick(); showMenu = false }
-                            )
-                            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
-                            InputMenuItem(
-                                icon = Icons.Outlined.Adb,
-                                label = "寄生模式",
-                                active = parasiticEnabled,
-                                showToggle = true,
-                                onClick = {
-                                    parasiticEnabled = !parasiticEnabled
-                                    com.orizon.openkiwi.core.agent.ParasiticQueryTool.enabled = parasiticEnabled
-                                }
-                            )
-                            InputMenuItem(
-                                icon = Icons.Outlined.ChatBubbleOutline,
-                                label = "微信/QQ 操控",
-                                onClick = {
-                                    val hint = "请调用 app_reply_bot：app=wechat 或 qq，instruction 写清要打开的聊天和要发的内容；mode=draft 可只打字不发送。"
-                                    onTextChange(if (text.isBlank()) hint else "$text\n$hint")
-                                    showMenu = false
-                                }
-                            )
-                        }
-                    }
-
+                Column(modifier = Modifier.weight(1f)) {
                     BasicTextField(
                         value = text,
                         onValueChange = onTextChange,
                         modifier = Modifier
-                            .weight(1f)
-                            .padding(horizontal = 4.dp),
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp),
                         textStyle = MaterialTheme.typography.bodyLarge.copy(
                             color = MaterialTheme.colorScheme.onSurface
                         ),
-                        cursorBrush = androidx.compose.ui.graphics.SolidColor(com.orizon.openkiwi.ui.theme.LuminaAccentGreen),
+                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                         decorationBox = { innerTextField ->
                             Box {
                                 if (text.isEmpty()) {
                                     Text(
-                                        if (isListening) "正在聆听..." else "Message OpenKiwi...",
+                                        if (isListening) "\u6B63\u5728\u8046\u542C\u2026" else "\u8F93\u5165\u6D88\u606F\u2026",
                                         style = MaterialTheme.typography.bodyLarge,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
                                     )
                                 }
                                 innerTextField()
                             }
                         }
                     )
-
-                    if (isProcessing) {
-                        FilledIconButton(
-                            onClick = onStop,
-                            modifier = Modifier.size(40.dp),
-                            colors = IconButtonDefaults.filledIconButtonColors(
-                                containerColor = MaterialTheme.colorScheme.error
-                            ),
-                            shape = CircleShape
-                        ) {
-                            Icon(Icons.Default.Stop, null, modifier = Modifier.size(18.dp))
-                        }
-                    } else {
-                        FilledIconButton(
-                            onClick = {
-                                if (text.isNotBlank() || attachedImageUri != null || attachedFileUri != null || attachedVideoUri != null) {
-                                    onSend()
-                                    attachedImageUri = null
-                                    attachedFileUri = null
-                                    attachedFileName = ""
-                                    attachedVideoUri = null
-                                    attachedVideoName = ""
-                                }
-                            },
-                            modifier = Modifier.size(40.dp),
-                            enabled = text.isNotBlank() || attachedImageUri != null || attachedFileUri != null || attachedVideoUri != null,
-                            colors = IconButtonDefaults.filledIconButtonColors(
-                                containerColor = com.orizon.openkiwi.ui.theme.LuminaAccentGreen,
-                                disabledContainerColor = com.orizon.openkiwi.ui.theme.LuminaGlassLight
-                            ),
-                            shape = CircleShape
-                        ) {
-                            Icon(Icons.Default.Send, null, modifier = Modifier.size(18.dp), tint = Color.Black)
-                        }
-                    }
+                    HorizontalDivider(
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
+                    )
                 }
+
+                Spacer(Modifier.width(8.dp))
+
+                if (isProcessing) {
+                    IconButton(
+                        onClick = onStop,
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Stop, null,
+                            modifier = Modifier.size(20.dp),
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                    }
+                } else {
+                    IconButton(
+                        onClick = {
+                            if (text.isNotBlank() || attachedImageUri != null || attachedFileUri != null || attachedVideoUri != null) {
+                                onSend()
+                                attachedImageUri = null
+                                attachedFileUri = null
+                                attachedFileName = ""
+                                attachedVideoUri = null
+                                attachedVideoName = ""
+                            }
+                        },
+                        enabled = text.isNotBlank() || attachedImageUri != null || attachedFileUri != null || attachedVideoUri != null,
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.ArrowUpward, null,
+                            modifier = Modifier.size(20.dp),
+                            tint = if (text.isNotBlank() || attachedImageUri != null || attachedFileUri != null || attachedVideoUri != null)
+                                MaterialTheme.colorScheme.primary
+                            else
+                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
+                        )
+                    }
                 }
             }
         }
@@ -1111,177 +1032,200 @@ private fun SessionDrawer(
     onArtifactsClick: () -> Unit = {},
     onScheduleClick: () -> Unit = {},
     onRecipesClick: () -> Unit = {},
+    onMcpClick: () -> Unit = {},
     pendingNoteCount: Int = 0
 ) {
+    var toolsExpanded by remember { mutableStateOf(false) }
+
     ModalDrawerSheet(
         modifier = Modifier
             .width(280.dp)
             .fillMaxHeight()
             .statusBarsPadding()
             .navigationBarsPadding(),
-        drawerContainerColor = MaterialTheme.colorScheme.surface,
-        drawerContentColor = MaterialTheme.colorScheme.onSurface,
-        drawerShape = RoundedCornerShape(topEnd = 16.dp, bottomEnd = 16.dp)
+        drawerContainerColor = MaterialTheme.colorScheme.background,
+        drawerContentColor = MaterialTheme.colorScheme.onBackground,
+        drawerShape = RoundedCornerShape(0.dp)
     ) {
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(24.dp))
+
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text("对话", style = MaterialTheme.typography.titleLarge)
+            Text(
+                "\u5BF9\u8BDD",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
             IconButton(onClick = onNewChat, modifier = Modifier.size(32.dp)) {
-                Icon(Icons.Outlined.Edit, null, modifier = Modifier.size(18.dp))
+                Icon(Icons.Outlined.Edit, null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(8.dp))
 
         LazyColumn(modifier = Modifier.weight(1f)) {
             if (sessions.isEmpty()) {
                 item {
-                    Box(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            "暂无对话",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
-                        )
-                    }
+                    Text(
+                        "\u6682\u65E0\u5BF9\u8BDD",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f),
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 32.dp)
+                    )
                 }
             }
             items(sessions, key = { it.id }) { session ->
-                NavigationDrawerItem(
-                    label = {
-                        Text(
-                            session.title.ifBlank { "新对话" },
-                            maxLines = 1,
-                            style = MaterialTheme.typography.bodyMedium
+                val isSelected = session.id == currentSessionId
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onSessionClick(session.id) }
+                        .background(
+                            if (isSelected) MaterialTheme.colorScheme.surfaceVariant
+                            else Color.Transparent
                         )
-                    },
-                    selected = session.id == currentSessionId,
-                    onClick = { onSessionClick(session.id) },
-                    badge = {
-                        if (session.id == currentSessionId) {
-                            IconButton(
-                                onClick = { onDeleteSession(session.id) },
-                                modifier = Modifier.size(20.dp)
-                            ) {
-                                Icon(Icons.Outlined.Delete, null, modifier = Modifier.size(14.dp))
-                            }
+                        .padding(horizontal = 20.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        session.title.ifBlank { "\u65B0\u5BF9\u8BDD" },
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.weight(1f)
+                    )
+                    if (isSelected) {
+                        Spacer(Modifier.width(8.dp))
+                        IconButton(
+                            onClick = { onDeleteSession(session.id) },
+                            modifier = Modifier.size(20.dp)
+                        ) {
+                            Icon(
+                                Icons.Outlined.Delete, null,
+                                modifier = Modifier.size(14.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
-                    },
-                    modifier = Modifier.padding(horizontal = 12.dp).height(40.dp),
-                    shape = RoundedCornerShape(8.dp)
-                )
+                    }
+                }
             }
         }
-        HorizontalDivider(modifier = Modifier.padding(horizontal = 20.dp), color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
-        Spacer(Modifier.height(4.dp))
 
-        DrawerMenuItem(Icons.Outlined.Assignment, "任务", onTasksClick)
-        DrawerMenuItem(Icons.Outlined.Schedule, "定时", onScheduleClick)
-        DrawerMenuItem(Icons.Outlined.Checklist, "自动化配方", onRecipesClick)
-        DrawerMenuItem(Icons.Outlined.Psychology, "记忆", onMemoryClick)
-        DrawerMenuItem(Icons.Outlined.AutoFixHigh, "技能", onSkillsClick)
-        DrawerMenuItem(Icons.Outlined.Devices, "设备", onDevicesClick)
-        DrawerMenuItemWithBadge(Icons.Outlined.Notifications, "通知", onNotesClick, pendingNoteCount)
-        DrawerMenuItem(Icons.Outlined.Build, "工具", onToolsClick)
-        DrawerMenuItem(Icons.Outlined.InsertDriveFile, "生成文件", onArtifactsClick)
-        DrawerMenuItem(Icons.Outlined.Terminal, "终端", onTerminalClick)
-        DrawerMenuItem(Icons.Outlined.RecordVoiceOver, "语音", onVoiceClick)
-        DrawerMenuItem(Icons.Outlined.Security, "日志", onAuditLogClick)
+        HorizontalDivider(
+            modifier = Modifier.padding(horizontal = 20.dp),
+            thickness = 0.5.dp,
+            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+        )
 
-        HorizontalDivider(modifier = Modifier.padding(horizontal = 20.dp), color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
-        DrawerMenuItem(Icons.Outlined.Settings, "设置", onSettingsClick)
-
-        val localIp = remember {
-            try {
-                java.net.NetworkInterface.getNetworkInterfaces()?.toList()
-                    ?.flatMap { it.inetAddresses.toList() }
-                    ?.firstOrNull { !it.isLoopbackAddress && it is java.net.Inet4Address }
-                    ?.hostAddress ?: "未连接"
-            } catch (_: Exception) { "未知" }
-        }
-        Spacer(Modifier.height(4.dp))
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 6.dp),
+                .clickable { toolsExpanded = !toolsExpanded }
+                .padding(horizontal = 20.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                "\u529F\u80FD",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Icon(
+                if (toolsExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                null,
+                modifier = Modifier.size(18.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        AnimatedVisibility(visible = toolsExpanded) {
+            Column {
+                DrawerToolRow("\u4EFB\u52A1", onTasksClick, "\u5B9A\u65F6", onScheduleClick)
+                DrawerToolRow("\u81EA\u52A8\u5316", onRecipesClick, "MCP", onMcpClick)
+                DrawerToolRow("\u8BB0\u5FC6", onMemoryClick, "\u6280\u80FD", onSkillsClick)
+                DrawerToolRow(
+                    if (pendingNoteCount > 0) "\u901A\u77E5($pendingNoteCount)" else "\u901A\u77E5",
+                    onNotesClick,
+                    "\u6587\u4EF6",
+                    onArtifactsClick
+                )
+                DrawerToolRow("\u7EC8\u7AEF", onTerminalClick, "\u8BBE\u5907", onDevicesClick)
+                DrawerToolRow("\u5DE5\u5177", onToolsClick, "\u8BED\u97F3", onVoiceClick)
+                DrawerToolRow("\u65E5\u5FD7", onAuditLogClick, null, null)
+            }
+        }
+
+        HorizontalDivider(
+            modifier = Modifier.padding(horizontal = 20.dp),
+            thickness = 0.5.dp,
+            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+        )
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onSettingsClick)
+                .padding(horizontal = 20.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                Icons.Outlined.Wifi, null,
-                modifier = Modifier.size(14.dp),
-                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
-            )
-            Spacer(Modifier.width(6.dp))
-            Text(
-                "IP: $localIp:8765",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f)
-            )
+            Icon(Icons.Outlined.Settings, null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.width(10.dp))
+            Text("\u8BBE\u7F6E", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
         }
         Spacer(Modifier.height(8.dp))
     }
 }
 
 @Composable
-private fun DrawerMenuItem(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit) {
-    NavigationDrawerItem(
-        label = { Text(label, style = MaterialTheme.typography.bodyMedium) },
-        selected = false,
-        onClick = onClick,
-        icon = { Icon(icon, null, modifier = Modifier.size(18.dp)) },
-        modifier = Modifier.padding(horizontal = 12.dp).height(40.dp),
-        shape = RoundedCornerShape(8.dp)
-    )
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun DrawerMenuItemWithBadge(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
-    onClick: () -> Unit,
-    badgeCount: Int
+private fun DrawerToolRow(
+    label1: String, onClick1: (() -> Unit)?,
+    label2: String?, onClick2: (() -> Unit)?
 ) {
-    NavigationDrawerItem(
-        label = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(label, style = MaterialTheme.typography.bodyMedium)
-                if (badgeCount > 0) {
-                    Spacer(Modifier.width(6.dp))
-                    Badge(
-                        containerColor = MaterialTheme.colorScheme.error,
-                        contentColor = MaterialTheme.colorScheme.onError
-                    ) {
-                        Text(
-                            if (badgeCount > 99) "99+" else badgeCount.toString(),
-                            style = MaterialTheme.typography.labelSmall
-                        )
-                    }
-                }
-            }
-        },
-        selected = false,
-        onClick = onClick,
-        icon = {
-            BadgedBox(
-                badge = {
-                    if (badgeCount > 0) {
-                        Badge(
-                            modifier = Modifier.size(8.dp),
-                            containerColor = MaterialTheme.colorScheme.error
-                        )
-                    }
-                }
-            ) {
-                Icon(icon, null, modifier = Modifier.size(18.dp))
-            }
-        },
-        modifier = Modifier.padding(horizontal = 12.dp).height(40.dp),
-        shape = RoundedCornerShape(8.dp)
-    )
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        if (onClick1 != null) {
+            Text(
+                label1,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable(onClick = onClick1)
+                    .background(
+                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        RoundedCornerShape(6.dp)
+                    )
+                    .padding(horizontal = 12.dp, vertical = 10.dp)
+            )
+        } else {
+            Spacer(Modifier.weight(1f))
+        }
+        if (label2 != null && onClick2 != null) {
+            Text(
+                label2,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable(onClick = onClick2)
+                    .background(
+                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        RoundedCornerShape(6.dp)
+                    )
+                    .padding(horizontal = 12.dp, vertical = 10.dp)
+            )
+        } else {
+            Spacer(Modifier.weight(1f))
+        }
+    }
+    Spacer(Modifier.height(6.dp))
 }

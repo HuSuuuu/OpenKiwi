@@ -22,9 +22,9 @@ class DeviceOverlayService : OverlayWindowManager() {
     enum class ConnectionType { USB, SSH, VNC, COMPANION, WIFI }
     enum class ConnectionStatus { CONNECTED, DISCONNECTED, CONNECTING, ERROR }
 
-    override val overlayTitle = "📡 设备"
+    override val overlayTitle = "\u8BBE\u5907"
     override val notificationId = 3005
-    override val overlayColor = 0xF01B2838.toInt()
+    override val overlayColor = 0xFF191919.toInt()
     override val initialYPosition = 800
 
     private val connectionViews = mutableMapOf<ConnectionType, TextView>()
@@ -39,13 +39,13 @@ class DeviceOverlayService : OverlayWindowManager() {
     override fun onCreateContent(container: LinearLayout) {
         for (type in ConnectionType.entries) {
             val tv = TextView(this).apply {
-                textSize = 10f
-                setTextColor(0xFF6B7280.toInt())
-                text = "${getIcon(type)} ${type.name}: 未连接"
+                textSize = 12f
+                setTextColor(mutedColor())
+                text = "${type.name}: \u672A\u8FDE\u63A5"
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply { topMargin = dp(2) }
+                ).apply { topMargin = dp(3) }
             }
             connectionViews[type] = tv
             container.addView(tv)
@@ -55,23 +55,15 @@ class DeviceOverlayService : OverlayWindowManager() {
     private fun setConnectionStatus(type: ConnectionType, status: ConnectionStatus, info: String) {
         post {
             val tv = connectionViews[type] ?: return@post
-            val (icon, label, color) = when (status) {
-                ConnectionStatus.CONNECTED -> Triple("●", "已连接", 0xFF3FB950.toInt())
-                ConnectionStatus.DISCONNECTED -> Triple("○", "未连接", 0xFF6B7280.toInt())
-                ConnectionStatus.CONNECTING -> Triple("◌", "连接中...", 0xFFFBBF24.toInt())
-                ConnectionStatus.ERROR -> Triple("✗", "错误", 0xFFFF7B72.toInt())
+            val (dot, label, color) = when (status) {
+                ConnectionStatus.CONNECTED -> Triple("\u25CF", "\u5DF2\u8FDE\u63A5", 0xFF3FB950.toInt())
+                ConnectionStatus.DISCONNECTED -> Triple("\u25CB", "\u672A\u8FDE\u63A5", mutedColor())
+                ConnectionStatus.CONNECTING -> Triple("\u25CB", "\u8FDE\u63A5\u4E2D...", 0xFFFBBF24.toInt())
+                ConnectionStatus.ERROR -> Triple("\u25CF", "\u9519\u8BEF", 0xFFFF7B72.toInt())
             }
             val extra = if (info.isNotBlank()) " ($info)" else ""
-            tv.text = "${getIcon(type)} ${type.name}: $icon $label$extra"
+            tv.text = "$dot ${type.name}: $label$extra"
             tv.setTextColor(color)
         }
-    }
-
-    private fun getIcon(type: ConnectionType): String = when (type) {
-        ConnectionType.USB -> "🔌"
-        ConnectionType.SSH -> "🖥"
-        ConnectionType.VNC -> "🖼"
-        ConnectionType.COMPANION -> "📱"
-        ConnectionType.WIFI -> "📶"
     }
 }

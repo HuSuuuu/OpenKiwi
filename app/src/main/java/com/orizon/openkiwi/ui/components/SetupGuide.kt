@@ -185,17 +185,12 @@ fun SetupGuideDialog(onDismiss: () -> Unit) {
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 if (!allRequired) {
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f)
-                    ) {
-                        Text(
-                            "请先开启无障碍服务",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.padding(10.dp)
-                        )
-                    }
+                    Text(
+                        "\u8BF7\u5148\u5F00\u542F\u65E0\u969C\u788D\u670D\u52A1",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(vertical = 4.dp)
+                    )
                 }
 
                 items.forEach { item -> SetupItem(item) }
@@ -221,8 +216,8 @@ fun SetupGuideDialog(onDismiss: () -> Unit) {
 private fun SetupItem(item: PermissionItem) {
     Surface(
         shape = RoundedCornerShape(8.dp),
-        color = if (item.isGranted) MaterialTheme.colorScheme.primary.copy(alpha = 0.06f)
-        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        color = if (item.isGranted) MaterialTheme.colorScheme.surfaceVariant
+        else MaterialTheme.colorScheme.surface
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(10.dp),
@@ -240,9 +235,11 @@ private fun SetupItem(item: PermissionItem) {
                     Text(item.name, style = MaterialTheme.typography.titleMedium)
                     if (item.isRequired) {
                         Spacer(Modifier.width(4.dp))
-                        Surface(shape = RoundedCornerShape(3.dp), color = MaterialTheme.colorScheme.error.copy(alpha = 0.1f)) {
-                            Text("必需", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp))
-                        }
+                        Text(
+                            "\u00B7 \u5FC5\u9700",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
                     }
                 }
                 Text(item.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f))

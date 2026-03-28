@@ -60,6 +60,11 @@ data class ToolArtifact(
 
 interface Tool {
     val definition: ToolDefinition
+    val supportsStreaming: Boolean get() = false
     suspend fun execute(params: Map<String, Any?>): ToolResult
+    suspend fun executeStreaming(params: Map<String, Any?>): kotlinx.coroutines.flow.Flow<String> {
+        val result = execute(params)
+        return kotlinx.coroutines.flow.flowOf(result.output)
+    }
     fun checkPermission(): Boolean = true
 }

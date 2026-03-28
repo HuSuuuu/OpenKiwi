@@ -12,6 +12,10 @@ class ToolRegistry {
         tools[tool.definition.name] = tool
     }
 
+    fun registerAll(toolList: List<Tool>) {
+        toolList.forEach { register(it) }
+    }
+
     fun unregister(name: String) {
         tools.remove(name)
     }

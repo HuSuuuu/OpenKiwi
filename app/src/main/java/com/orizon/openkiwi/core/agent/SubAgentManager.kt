@@ -1,5 +1,6 @@
 package com.orizon.openkiwi.core.agent
 
+import com.orizon.openkiwi.core.llm.LlmProviderFactory
 import com.orizon.openkiwi.core.memory.MemoryManager
 import com.orizon.openkiwi.core.model.*
 import com.orizon.openkiwi.core.tool.ToolExecutor
@@ -26,7 +27,9 @@ class SubAgentManager(
     private val toolExecutor: ToolExecutor,
     private val memoryManager: MemoryManager,
     private val chatRepository: ChatRepository,
-    private val modelRepository: ModelRepository
+    private val modelRepository: ModelRepository,
+    private val communicationBus: AgentCommunicationBus? = null,
+    private val llmProviderFactory: LlmProviderFactory? = null
 ) {
     private val agents = ConcurrentHashMap<String, SubAgentState>()
     private val agentJobs = ConcurrentHashMap<String, Job>()
@@ -34,6 +37,28 @@ class SubAgentManager(
 
     private val _agentStates = MutableStateFlow<Map<String, SubAgentState>>(emptyMap())
     val agentStates: StateFlow<Map<String, SubAgentState>> = _agentStates.asStateFlow()
+
+    init {
+        if (communicationBus != null) {
+            scope.launch {
+                communicationBus.messages.collect { message ->
+                    when (message.type) {
+                        MessageType.TASK_ASSIGN -> {
+                            val targetAgent = agents[message.toAgentId]
+                            if (targetAgent != null) {
+                                launch {
+                                    val result = StringBuilder()
+                                    executeTask(message.toAgentId, message.payload).collect { result.append(it) }
+                                    communicationBus.sendResult(message.toAgentId, message.fromAgentId, result.toString())
+                                }
+                            }
+                        }
+                        else -> {}
+                    }
+                }
+            }
+        }
+    }
 
     fun createAgent(config: SubAgentConfig): String {
         val id = config.id.ifBlank { UUID.randomUUID().toString() }
@@ -51,6 +76,7 @@ class SubAgentManager(
 
         agents[agentId] = state.copy(status = "RUNNING")
         _agentStates.value = agents.toMap()
+        communicationBus?.sendStatus(agentId, "RUNNING")
 
         val config = state.config
         val modelConfig = if (config.modelConfigId.isNotBlank()) {
@@ -63,6 +89,7 @@ class SubAgentManager(
             emit("Error: No model configured for SubAgent")
             agents[agentId] = state.copy(status = "FAILED", lastResult = "No model")
             _agentStates.value = agents.toMap()
+            communicationBus?.sendStatus(agentId, "FAILED: No model")
             return@flow
         }
 
@@ -88,7 +115,8 @@ class SubAgentManager(
             toolExecutor = ToolExecutor(filteredRegistry),
             memoryManager = memoryManager,
             chatRepository = chatRepository,
-            modelRepository = modelRepository
+            modelRepository = modelRepository,
+            llmProviderFactory = llmProviderFactory
         )
 
         val resultBuilder = StringBuilder()
@@ -99,6 +127,52 @@ class SubAgentManager(
 
         agents[agentId] = state.copy(status = "COMPLETED", lastResult = resultBuilder.toString())
         _agentStates.value = agents.toMap()
+        communicationBus?.sendStatus(agentId, "COMPLETED")
+    }
+
+    /**
+     * Orchestrator mode: create multiple worker agents and dispatch subtasks.
+     * The coordinator collects results from all workers.
+     */
+    suspend fun orchestrate(
+        goal: String,
+        subtasks: List<Pair<SubAgentConfig, String>>,
+        parallel: Boolean = true
+    ): Flow<String> = flow {
+        emit("[Orchestrator] Dispatching ${subtasks.size} subtasks for: $goal\n")
+
+        val workerIds = subtasks.map { (config, _) -> createAgent(config) }
+        val results = ConcurrentHashMap<String, String>()
+
+        if (parallel) {
+            val jobs = subtasks.zip(workerIds).map { (taskPair, workerId) ->
+                scope.async {
+                    val sb = StringBuilder()
+                    executeTask(workerId, taskPair.second).collect { sb.append(it) }
+                    results[workerId] = sb.toString()
+                }
+            }
+            jobs.forEach { it.await() }
+        } else {
+            for ((taskPair, workerId) in subtasks.zip(workerIds)) {
+                val sb = StringBuilder()
+                executeTask(workerId, taskPair.second).collect { chunk ->
+                    sb.append(chunk)
+                    emit(chunk)
+                }
+                results[workerId] = sb.toString()
+            }
+        }
+
+        emit("\n[Orchestrator] All ${subtasks.size} subtasks completed.\n")
+
+        for ((i, workerId) in workerIds.withIndex()) {
+            val result = results[workerId] ?: "No result"
+            emit("\n--- Worker ${i + 1} (${subtasks[i].first.name}) ---\n")
+            emit(result.take(2000))
+            emit("\n")
+            destroyAgent(workerId)
+        }
     }
 
     fun destroyAgent(agentId: String) {

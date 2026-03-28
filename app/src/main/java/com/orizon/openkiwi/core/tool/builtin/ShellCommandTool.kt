@@ -13,16 +13,7 @@ import java.util.concurrent.TimeUnit
 class ShellCommandTool : Tool {
     override val definition = ToolDefinition(
         name = "shell_command",
-        description = """Execute a shell command locally on Android. Non-root but with expanded PATH (/system/bin, /system/xbin, /vendor/bin, /sbin).
-There is NO python/python3 in this shell — do NOT run `python` here; use code_execution with language=python (embedded Chaquopy).
-Available: ls, cat, echo, grep, find, wc, sort, head, tail, cp, mv, mkdir, rm, touch, chmod, chown, ln,
-date, uptime, whoami, id, uname, hostname, df, du, stat, file,
-ps, top -n1, kill, nice, nohup,
-ifconfig, ip, ping, traceroute, netstat, ss, nslookup, curl, wget,
-getprop, setprop, dumpsys, pm (list/install/uninstall/clear), am (start/broadcast/force-stop),
-content query/insert/update/delete, settings get/put/list, input (text/tap/swipe/keyevent),
-logcat -d, dmesg, service list, cmd, toybox, toolbox.
-For Python scripts, use code_execution (or code_execute) with language=python (runs locally via embedded CPython).""",
+        description = "Execute a shell command on Android (non-root, sh). No python binary — use code_execution for Python.",
         category = ToolCategory.CODE_EXECUTION.name,
         permissionLevel = PermissionLevel.DANGEROUS.name,
         parameters = mapOf(

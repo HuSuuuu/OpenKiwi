@@ -18,7 +18,7 @@ OpenKiwi 是运行在 **Android** 上的开源 AI Agent：不仅是聊天，还�
 
 | 方式 | 说明 |
 |------|------|
-| **GitHub Releases** | [**Latest Release**](https://github.com/HuSuuuu/OpenKiwi/releases/latest) 下载附件 APK（当前推荐包名示例：**OpenKiwi322.apk**） |
+| **GitHub Releases** | [**Latest Release**](https://github.com/HuSuuuu/OpenKiwi/releases/latest) 下载附件 APK（当前推荐包名示例：**OpenKiwi328.apk**） |
 | 自行编译 | 见下文 [从源码构建](#从源码构建) |
 
 > **注意**：Release 上的 APK 为预编译调试包示例；生产环境请自行 **release 签名** 构建。仓库通过 `.gitignore` 忽略 `*.apk`，安装包请始终挂在 **Releases 资产**，不要强行提交进 Git。
@@ -39,6 +39,24 @@ OpenKiwi 是运行在 **Android** 上的开源 AI Agent：不仅是聊天，还�
 - 截屏 + 视觉模型理解界面，**点击、滑动、输入、打开应用** 等多步自动化  
 - 任务分解、卡住与振荡检测、前台气泡提示  
 - 需开启 **OpenKiwi 无障碍服务**
+
+### MCP 协议（Model Context Protocol）
+
+- 支持 **SSE / STDIO** 两种传输方式连接外部 MCP Server
+- 侧边栏 **MCP 设置** 页面管理服务端配置
+- MCP 工具自动桥接为 Agent 内置工具，无缝调用
+
+### 多模型 Provider 抽象
+
+- 统一 **LlmProvider** 接口，内置 **OpenAI / Anthropic / Gemini** 三种实现
+- 每个模型可独立配置 Provider 类型，Agent 按需切换
+- 兼容所有 OpenAI 兼容网关
+
+### 插件系统
+
+- **Plugin SDK**（`plugin-sdk/`）：标准化插件清单与接口
+- 动态加载外部插件 JAR/DEX
+- 插件管理页面，一键启停
 
 ### 内置工具（30+）
 
@@ -109,23 +127,23 @@ OpenKiwi 是运行在 **Android** 上的开源 AI Agent：不仅是聊天，还�
 # app/build/outputs/apk/debug/app-debug.apk
 ```
 
-若你本地将输出重命名为 `OpenKiwi322.apk`，可直接用于 [发布到 GitHub Releases](#发布到-github-releases)。
+若你本地将输出重命名为 `OpenKiwi328.apk`，可直接用于 [发布到 GitHub Releases](#发布到-github-releases)。
 
 ---
 
 ## 发布到 GitHub Releases
 
-维护者将 **OpenKiwi322.apk**（或任意版本 APK）上传到 Release 的完整步骤见：
+维护者将 **OpenKiwi328.apk**（或任意版本 APK）上传到 Release 的完整步骤见：
 
 **[docs/RELEASING.md](docs/RELEASING.md)**
 
 快捷方式（需已安装 [`gh`](https://cli.github.com/) 且 `gh auth login`）：
 
 ```powershell
-.\scripts\release-github.ps1 -Tag v3.2.2 -ApkPath .\OpenKiwi322.apk
+.\scripts\release-github.ps1 -Tag v3.2.8 -ApkPath .\OpenKiwi328.apk
 ```
 
-发版说明模板：**[docs/RELEASE_NOTES_v3.2.2.md](docs/RELEASE_NOTES_v3.2.2.md)**（发布前可更新 SHA256 与文案；不传 `-NotesFile` 时脚本会按 tag 自动选 `docs/RELEASE_NOTES_v{version}.md`）。
+发版说明模板：**[docs/RELEASE_NOTES_v3.2.8.md](docs/RELEASE_NOTES_v3.2.8.md)**（发布前可更新 SHA256 与文案；不传 `-NotesFile` 时脚本会按 tag 自动选 `docs/RELEASE_NOTES_v{version}.md`）。
 
 ---
 
@@ -149,10 +167,13 @@ OpenKiwi 是运行在 **Android** 上的开源 AI Agent：不仅是聊天，还�
 ```
 app/src/main/java/com/orizon/openkiwi/
 ├── core/
-│   ├── agent/          # Agent 引擎、寄生/App 回复等
-│   ├── tool/           # 工具注册与 30+ 内置工具
+│   ├── agent/          # Agent 引擎 V2（规划/反思/子Agent）
+│   ├── tool/           # 工具注册与 30+ 内置工具 + 持久终端
 │   ├── gui/            # GUI Agent
+│   ├── llm/            # LLM Provider 抽象（OpenAI/Anthropic/Gemini）
+│   ├── mcp/            # MCP 协议客户端与工具桥接
 │   ├── model/          # 模型与调度
+│   ├── plugin/         # 插件加载与管理
 │   ├── memory/         # 记忆
 │   ├── skill/          # 技能
 │   ├── notification/   # 通知处理、自动回复
@@ -162,13 +183,14 @@ app/src/main/java/com/orizon/openkiwi/
 │   ├── code/           # 代码沙箱
 │   └── security/       # 审计与隐私相关
 ├── data/               # Room、Repository、Preferences
-├── network/            # API、Companion、飞书 等
-├── service/            # 无障碍、通知监听、语音、剪贴板等
-├── ui/                 # 各 Compose 页面与导航
+├── network/            # API、Companion、飞书、API Router
+├── service/            # 无障碍、通知监听、语音、悬浮窗等
+├── ui/                 # Compose 页面（纸质感杂志风主题）
 ├── widget/             # 桌面小组件
 └── di/                 # AppContainer
 
 companion-pc/           # Python + PyQt6 PC 伴侣
+plugin-sdk/             # 插件开发 SDK
 ```
 
 ---

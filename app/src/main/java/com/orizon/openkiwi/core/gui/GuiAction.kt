@@ -15,7 +15,7 @@ sealed class GuiAction {
     data class KeyEvent(val keyCode: String, override val metadata: String = "do") : GuiAction()
     data class InstallApp(val apkPath: String, override val metadata: String = "do") : GuiAction()
     data class UninstallApp(val packageName: String, override val metadata: String = "do") : GuiAction()
-    data class Wait(val durationMs: Long = 1500, override val metadata: String = "do") : GuiAction()
+    data class Wait(val durationMs: Long = 3000, override val metadata: String = "do") : GuiAction()
     data class Takeover(val reason: String, override val metadata: String = "do") : GuiAction()
     data class Finish(val message: String, override val metadata: String = "finish") : GuiAction()
     data class Error(val errorMessage: String, override val metadata: String = "error") : GuiAction()

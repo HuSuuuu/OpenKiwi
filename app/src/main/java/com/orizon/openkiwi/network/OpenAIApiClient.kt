@@ -25,6 +25,8 @@ class OpenAIApiClient(
         ignoreUnknownKeys = true
         encodeDefaults = true
         explicitNulls = false
+        coerceInputValues = true
+        isLenient = true
     }
 ) {
     private val sseClient: OkHttpClient by lazy {
@@ -43,6 +45,26 @@ class OpenAIApiClient(
         return "$trimmed/chat/completions"
     }
 
+    /**
+     * 某些 OpenAI 兼容网关（小米 MiMo、MiniMax 等）不支持 `stream_options` / `reasoning_effort`，
+     * 收到这些字段会 400 或返回空。根据 base URL 判断是否需要剔除。
+     */
+    private fun needsParamStrip(baseUrl: String): Boolean {
+        val host = runCatching { java.net.URI(baseUrl.trim()).host?.lowercase() }.getOrNull() ?: ""
+        val knownStrictHosts = listOf("xiaomimimo.com", "mimo-v2.com", "minimaxi.com")
+        return knownStrictHosts.any { host.endsWith(it) }
+    }
+
+    private fun sanitizeRequest(request: ChatCompletionRequest, baseUrl: String): ChatCompletionRequest {
+        if (!needsParamStrip(baseUrl)) return request
+        return request.copy(
+            reasoningEffort = null,
+            streamOptions = null,
+            frequencyPenalty = request.frequencyPenalty.takeIf { it != 0.0 },
+            presencePenalty = request.presencePenalty.takeIf { it != 0.0 }
+        )
+    }
+
     suspend fun chatCompletion(
         baseUrl: String,
         apiKey: String,
@@ -50,8 +72,9 @@ class OpenAIApiClient(
     ): Result<ChatCompletionResponse> = withContext(Dispatchers.IO) {
         runCatching {
             val url = buildUrl(baseUrl)
-            val hasVision = request.messages.any { it.imageUrl != null || it.videoUrl != null }
-            val body = if (hasVision) encodeVisionRequest(request, stream = false) else json.encodeToString(ChatCompletionRequest.serializer(), request.copy(stream = false))
+            val safeRequest = sanitizeRequest(request, baseUrl)
+            val hasVision = safeRequest.messages.any { it.imageUrl != null || it.videoUrl != null }
+            val body = if (hasVision) encodeVisionRequest(safeRequest, stream = false) else json.encodeToString(ChatCompletionRequest.serializer(), safeRequest.copy(stream = false))
             val httpRequest = Request.Builder()
                 .url(url)
                 .addHeader("Authorization", "Bearer $apiKey")
@@ -89,18 +112,20 @@ class OpenAIApiClient(
                     append("""{"type":"text","text":${json.encodeToString(String.serializer(), msg.content ?: "")}}""")
                     append("]")
                 }
-                """{"role":"${msg.role.name.lowercase()}","content":$contentParts}"""
+                val roleName = (msg.role ?: ChatRole.USER).name.lowercase()
+                """{"role":"$roleName","content":$contentParts}"""
             } else if (msg.toolCalls != null) {
                 json.encodeToString(ChatMessage.serializer(), msg)
             } else {
-                """{"role":"${msg.role.name.lowercase()}","content":${json.encodeToString(String.serializer(), msg.content ?: "")}}"""
+                val roleName = (msg.role ?: ChatRole.USER).name.lowercase()
+                """{"role":"$roleName","content":${json.encodeToString(String.serializer(), msg.content ?: "")}}"""
             }
         }
         val extras = buildString {
             request.temperature?.let { append(""","temperature":$it""") }
             request.maxTokens?.let { append(""","max_tokens":$it""") }
             request.reasoningEffort?.let { append(""","reasoning_effort":"$it"""") }
-            if (stream) append(""","stream_options":{"include_usage":true}""")
+            if (stream && request.streamOptions != null) append(""","stream_options":{"include_usage":true}""")
         }
         val toolsJson = buildToolsAndToolChoiceJson(request)
         return """{"model":"${request.model}","messages":[$messagesJson],"stream":$stream$extras$toolsJson}"""
@@ -125,8 +150,13 @@ class OpenAIApiClient(
         request: ChatCompletionRequest
     ): Flow<StreamChunk> = callbackFlow {
         val url = buildUrl(baseUrl)
-        val hasVision = request.messages.any { it.imageUrl != null || it.videoUrl != null }
-        val streamRequest = request.copy(stream = true, streamOptions = StreamOptions(includeUsage = true))
+        val safeRequest = sanitizeRequest(request, baseUrl)
+        val hasVision = safeRequest.messages.any { it.imageUrl != null || it.videoUrl != null }
+        val streamRequest = if (needsParamStrip(baseUrl)) {
+            safeRequest.copy(stream = true)
+        } else {
+            safeRequest.copy(stream = true, streamOptions = StreamOptions(includeUsage = true))
+        }
         val body = if (hasVision) encodeVisionRequest(streamRequest, stream = true)
                    else json.encodeToString(ChatCompletionRequest.serializer(), streamRequest)
         val httpRequest = Request.Builder()

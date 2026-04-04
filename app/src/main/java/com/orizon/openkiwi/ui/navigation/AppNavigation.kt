@@ -54,6 +54,7 @@ object Routes {
     const val SCHEDULE = "schedule"
     const val RECIPES = "recipes"
     const val MCP_SETTINGS = "mcp_settings"
+    const val WORKSPACE = "workspace"
 }
 
 private const val KEY_REOPEN_DRAWER = "reopen_drawer"
@@ -104,7 +105,8 @@ fun AppNavigation() {
                 onNavigateToArtifacts = { navController.navigate(Routes.ARTIFACTS) { launchSingleTop = true } },
                 onNavigateToSchedule = { navController.navigate(Routes.SCHEDULE) { launchSingleTop = true } },
                 onNavigateToRecipes = { navController.navigate(Routes.RECIPES) { launchSingleTop = true } },
-                onNavigateToMcp = { navController.navigate(Routes.MCP_SETTINGS) { launchSingleTop = true } }
+                onNavigateToMcp = { navController.navigate(Routes.MCP_SETTINGS) { launchSingleTop = true } },
+                onNavigateToWorkspace = { navController.navigate(Routes.WORKSPACE) { launchSingleTop = true } }
             )
         }
 
@@ -217,6 +219,13 @@ fun AppNavigation() {
             McpSettingsScreen(
                 mcpManager = container.mcpManager,
                 mcpServerRepository = container.mcpServerRepository,
+                onBack = { backAndReopenDrawer(navController) }
+            )
+        }
+
+        composable(Routes.WORKSPACE) {
+            com.orizon.openkiwi.ui.workspace.WorkspaceScreen(
+                workspace = container.agentWorkspace,
                 onBack = { backAndReopenDrawer(navController) }
             )
         }

@@ -81,7 +81,11 @@ class GuiActionParser {
             }
             "back" -> GuiAction.Back()
             "home" -> GuiAction.Home()
-            "wait" -> GuiAction.Wait(1500)
+            "wait" -> {
+                val dur = params?.get("duration")?.jsonPrimitive?.longOrNull
+                    ?: params?.get("ms")?.jsonPrimitive?.longOrNull
+                GuiAction.Wait(dur?.coerceIn(500, 15000) ?: 3000)
+            }
             "takeover", "take_over" -> GuiAction.Takeover(params?.get("message")?.jsonPrimitive?.contentOrNull ?: "User intervention needed")
             "finish", "done" -> GuiAction.Finish(params?.get("message")?.jsonPrimitive?.contentOrNull ?: "Task completed")
             else -> null
@@ -160,7 +164,10 @@ class GuiActionParser {
             }
             "Back" -> GuiAction.Back()
             "Home" -> GuiAction.Home()
-            "Wait" -> GuiAction.Wait(1500)
+            "Wait" -> {
+                val dur = Regex("""(?:duration|ms|time)\s*=\s*(\d+)""").find(trimmed)?.groupValues?.get(1)?.toLongOrNull()
+                GuiAction.Wait(dur?.coerceIn(500, 15000) ?: 3000)
+            }
             "Take_over" -> {
                 val reason = Regex("""message\s*=\s*["'](.+?)["']""").find(trimmed)?.groupValues?.get(1) ?: "User intervention needed"
                 GuiAction.Takeover(reason)
@@ -255,7 +262,7 @@ class GuiActionParser {
             lower.contains("home") || lower.contains("桌面") -> GuiAction.Home()
             lower.contains("scroll down") || lower.contains("下滑") -> GuiAction.Swipe(500, 700, 500, 300)
             lower.contains("scroll up") || lower.contains("上滑") -> GuiAction.Swipe(500, 300, 500, 700)
-            else -> GuiAction.Wait(1500)
+            else -> GuiAction.Wait(3000)
         }
     }
 }

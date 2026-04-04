@@ -104,7 +104,7 @@ class MemoryManager(private val memoryDao: MemoryDao) {
             addAll(systemMessages)
             if (middleMessages.isNotEmpty()) {
                 val summary = middleMessages.joinToString("\n") {
-                    "[${it.role.name}]: ${it.content?.take(100) ?: ""}"
+                    "[${(it.role ?: ChatRole.ASSISTANT).name}]: ${it.content?.take(100) ?: ""}"
                 }
                 add(ChatMessage(
                     role = ChatRole.SYSTEM,

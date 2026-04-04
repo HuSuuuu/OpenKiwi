@@ -24,7 +24,7 @@ class IntentTool(private val context: Context) : Tool {
             "latitude" to ToolParamDef("string", "Map latitude"),
             "longitude" to ToolParamDef("string", "Map longitude"),
             "package_name" to ToolParamDef("string", "Target app package name"),
-            "setting" to ToolParamDef("string", "System setting name (wifi, bluetooth, display, sound, location, airplane, accessibility, notification_listener)"),
+            "setting" to ToolParamDef("string", "System setting name (wifi, bluetooth, display, sound, location, airplane, accessibility, notification_listener, app_notifications, date, locale, security, storage, battery, developer, nfc, hotspot, vpn, data_usage, input_method, print, cast, night_display, default_apps, manage_apps, usage_access, data_roaming)"),
             "path" to ToolParamDef("string", "Local file path used by view_file"),
             "mime_type" to ToolParamDef("string", "Optional MIME type for view_file")
         ),
@@ -64,6 +64,18 @@ class IntentTool(private val context: Context) : Tool {
                         "storage" -> Settings.ACTION_INTERNAL_STORAGE_SETTINGS
                         "battery" -> Settings.ACTION_BATTERY_SAVER_SETTINGS
                         "developer" -> Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS
+                        "nfc" -> Settings.ACTION_NFC_SETTINGS
+                        "hotspot" -> "android.settings.TETHER_SETTINGS"
+                        "vpn" -> Settings.ACTION_VPN_SETTINGS
+                        "data_usage" -> Settings.ACTION_DATA_USAGE_SETTINGS
+                        "input_method" -> Settings.ACTION_INPUT_METHOD_SETTINGS
+                        "print" -> Settings.ACTION_PRINT_SETTINGS
+                        "cast" -> Settings.ACTION_CAST_SETTINGS
+                        "night_display" -> Settings.ACTION_NIGHT_DISPLAY_SETTINGS
+                        "default_apps" -> Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS
+                        "manage_apps" -> Settings.ACTION_MANAGE_ALL_APPLICATIONS_SETTINGS
+                        "usage_access" -> Settings.ACTION_USAGE_ACCESS_SETTINGS
+                        "data_roaming" -> Settings.ACTION_DATA_ROAMING_SETTINGS
                         else -> Settings.ACTION_SETTINGS
                     }
                     val intent = Intent(settingsAction).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }

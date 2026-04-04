@@ -35,6 +35,7 @@ class UserPreferences(private val context: Context) {
         val KEY_VOICE_WAKE_WORD = stringPreferencesKey("voice_wake_word")
         val KEY_CLIPBOARD_MONITOR = booleanPreferencesKey("clipboard_monitor_enabled")
         val KEY_DYNAMIC_TOOL_RETRIEVAL = booleanPreferencesKey("dynamic_tool_retrieval")
+        val KEY_NOTIF_AUTO_FORWARD = booleanPreferencesKey("notification_auto_forward")
         val KEY_NOTIF_AUTO_REPLY = booleanPreferencesKey("notif_auto_reply_enabled")
         val KEY_NOTIF_AUTO_REPLY_TEMPLATE = stringPreferencesKey("notif_auto_reply_template")
         val KEY_NOTIF_AUTO_REPLY_PACKAGES = stringPreferencesKey("notif_auto_reply_packages")
@@ -61,7 +62,8 @@ class UserPreferences(private val context: Context) {
     val voiceWakeWord: Flow<String> = context.dataStore.data.map { it[KEY_VOICE_WAKE_WORD] ?: "hey kiwi" }
     val clipboardMonitorEnabled: Flow<Boolean> = context.dataStore.data.map { it[KEY_CLIPBOARD_MONITOR] ?: false }
     /** BM25 检索后仅下发相关工具定义，减少请求体积；关则始终下发全部已启用工具 */
-    val dynamicToolRetrieval: Flow<Boolean> = context.dataStore.data.map { it[KEY_DYNAMIC_TOOL_RETRIEVAL] ?: false }
+    val dynamicToolRetrieval: Flow<Boolean> = context.dataStore.data.map { it[KEY_DYNAMIC_TOOL_RETRIEVAL] ?: true }
+    val notificationAutoForward: Flow<Boolean> = context.dataStore.data.map { it[KEY_NOTIF_AUTO_FORWARD] ?: false }
     val notifAutoReplyEnabled: Flow<Boolean> = context.dataStore.data.map { it[KEY_NOTIF_AUTO_REPLY] ?: false }
     val notifAutoReplyTemplate: Flow<String> = context.dataStore.data.map { it[KEY_NOTIF_AUTO_REPLY_TEMPLATE] ?: "收到" }
     val notifAutoReplyPackages: Flow<String> = context.dataStore.data.map { it[KEY_NOTIF_AUTO_REPLY_PACKAGES] ?: "" }
@@ -144,6 +146,10 @@ class UserPreferences(private val context: Context) {
 
     suspend fun setDynamicToolRetrieval(enabled: Boolean) {
         context.dataStore.edit { it[KEY_DYNAMIC_TOOL_RETRIEVAL] = enabled }
+    }
+
+    suspend fun setNotificationAutoForward(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_NOTIF_AUTO_FORWARD] = enabled }
     }
 
     suspend fun setNotifAutoReplyEnabled(enabled: Boolean) {

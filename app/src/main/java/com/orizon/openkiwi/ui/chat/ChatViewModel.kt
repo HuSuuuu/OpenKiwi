@@ -8,6 +8,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.orizon.openkiwi.core.agent.AgentEngine
+import com.orizon.openkiwi.core.agent.ProactiveMessageBus
 import com.orizon.openkiwi.core.clipboard.ClipboardQuickBus
 import com.orizon.openkiwi.core.widget.WidgetActionBus
 import com.orizon.openkiwi.core.voice.VoiceWakeCommandBus
@@ -38,7 +39,8 @@ data class ChatUiState(
     val error: String? = null,
     val isListening: Boolean = false,
     val activeToolCalls: List<ToolCallStatus> = emptyList(),
-    val draftText: String = ""
+    val draftText: String = "",
+    val proactiveHint: String? = null
 )
 
 class ChatViewModel(
@@ -83,6 +85,18 @@ class ChatViewModel(
         viewModelScope.launch {
             WidgetActionBus.prompts.collect { p ->
                 if (p.isNotBlank()) sendMessage(p)
+            }
+        }
+        viewModelScope.launch {
+            ProactiveMessageBus.messages.collect { proactive ->
+                val currentSession = _uiState.value.currentSessionId
+                if (proactive.sessionId != null && proactive.sessionId == currentSession) {
+                    observeMessages(currentSession)
+                } else if (proactive.sessionId != null) {
+                    _uiState.value = _uiState.value.copy(
+                        proactiveHint = "[${proactive.sourceName}] ${proactive.content.take(80)}"
+                    )
+                }
             }
         }
     }
@@ -152,7 +166,7 @@ class ChatViewModel(
                     messages = visible.map { msg ->
                         MessageUiModel(
                             id = msg.messageId,
-                            role = msg.role.name,
+                            role = (msg.role ?: ChatRole.ASSISTANT).name,
                             content = msg.content ?: "",
                             turnId = msg.turnId,
                             artifacts = msg.artifacts.map {
@@ -390,6 +404,10 @@ class ChatViewModel(
 
     fun clearError() {
         _uiState.value = _uiState.value.copy(error = null)
+    }
+
+    fun clearProactiveHint() {
+        _uiState.value = _uiState.value.copy(proactiveHint = null)
     }
 
     fun toggleVoiceInput() {

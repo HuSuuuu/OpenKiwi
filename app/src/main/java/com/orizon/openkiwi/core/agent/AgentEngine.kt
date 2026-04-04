@@ -17,7 +17,6 @@ import com.orizon.openkiwi.util.VendorResponseSanitizer
 import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.*
@@ -39,14 +38,12 @@ class AgentEngine(
     private val skillLearner: SkillLearner? = null,
     private val userPreferences: UserPreferences? = null,
     private val llmProviderFactory: LlmProviderFactory? = null,
-    val planner: AgentPlanner = AgentPlanner(apiClient, llmProviderFactory),
+    private val agentWorkspace: AgentWorkspace? = null,
     val reflector: AgentReflector = AgentReflector(apiClient)
 ) {
     private val json = Json { ignoreUnknownKeys = true }
     private val _agentState = MutableStateFlow(AgentState())
     val agentState: StateFlow<AgentState> = _agentState.asStateFlow()
-
-    private var currentJob: Job? = null
 
     suspend fun processMessage(
         sessionId: String,
@@ -87,7 +84,8 @@ class AgentEngine(
         }
 
         if (messages.none { it.role == ChatRole.SYSTEM }) {
-            messages.add(0, ChatMessage(role = ChatRole.SYSTEM, content = AgentSystemPrompt.DEFAULT))
+            val wsCtx = agentWorkspace?.buildPromptContext() ?: ""
+            messages.add(0, ChatMessage(role = ChatRole.SYSTEM, content = AgentSystemPrompt.buildWithTime(wsCtx)))
         }
 
         val parasiticOn = ParasiticQueryTool.enabled
@@ -112,7 +110,7 @@ class AgentEngine(
 
         val compressedMessages = memoryManager.compressContext(
             messages, config.maxTokens / 2
-        )
+        ).toMutableList()
 
         if (parasiticOn && !toolSpecs.isNullOrEmpty() && !config.webSearchExclusive) {
             val hint = ChatMessage(
@@ -230,7 +228,33 @@ class AgentEngine(
                             globalToolLog.append(callingMarker)
                             emit(callingMarker)
 
-                            val result = toolExecutor.execute(tc.function.name, params, sessionId)
+                            var result = toolExecutor.execute(tc.function.name, params, sessionId)
+
+                            if (!result.success && config.supportsTools) {
+                                val reflection = try {
+                                    reflector.reflect(tc.function.name, params, result.error ?: "Unknown error", config, iterationMessages)
+                                } catch (e: Exception) {
+                                    Log.w("AgentEngine", "Reflection failed", e)
+                                    null
+                                }
+                                if (reflection != null) {
+                                    emit("$THINKING_MARKER[Reflect] ${reflection.reasoning}\n")
+                                    when (reflection.decision) {
+                                        ReflectionDecision.RETRY_SAME -> {
+                                            result = toolExecutor.execute(tc.function.name, params, sessionId)
+                                        }
+                                        ReflectionDecision.RETRY_DIFFERENT -> {
+                                            emit("$THINKING_MARKER[Retry] ${reflection.suggestedAction}\n")
+                                            result = toolExecutor.execute(tc.function.name, params, sessionId)
+                                        }
+                                        ReflectionDecision.ABORT -> {
+                                            emit("[Reflect: ABORT] ${reflection.reasoning}\n")
+                                        }
+                                        ReflectionDecision.SKIP -> { }
+                                    }
+                                }
+                            }
+
                             result.artifacts.forEach { artifact ->
                                 pendingArtifacts += tc.function.name to artifact
                             }
@@ -296,7 +320,7 @@ class AgentEngine(
                             emit(callingMarker)
 
                             val tool = toolRegistry.getTool(tc.function.name)
-                            val toolResult: ToolResult
+                            var toolResult: ToolResult
                             if (tool != null && tool.supportsStreaming) {
                                 val streamOutput = StringBuilder()
                                 tool.executeStreaming(params).collect { chunk ->
@@ -307,6 +331,32 @@ class AgentEngine(
                             } else {
                                 toolResult = toolExecutor.execute(tc.function.name, params, sessionId)
                             }
+
+                            if (!toolResult.success && config.supportsTools) {
+                                val reflection = try {
+                                    reflector.reflect(tc.function.name, params, toolResult.error ?: "Unknown error", config, iterationMessages)
+                                } catch (e: Exception) {
+                                    Log.w("AgentEngine", "Reflection failed", e)
+                                    null
+                                }
+                                if (reflection != null) {
+                                    emit("$THINKING_MARKER[Reflect] ${reflection.reasoning}\n")
+                                    when (reflection.decision) {
+                                        ReflectionDecision.RETRY_SAME -> {
+                                            toolResult = toolExecutor.execute(tc.function.name, params, sessionId)
+                                        }
+                                        ReflectionDecision.RETRY_DIFFERENT -> {
+                                            emit("$THINKING_MARKER[Retry] ${reflection.suggestedAction}\n")
+                                            toolResult = toolExecutor.execute(tc.function.name, params, sessionId)
+                                        }
+                                        ReflectionDecision.ABORT -> {
+                                            emit("[Reflect: ABORT] ${reflection.reasoning}\n")
+                                        }
+                                        ReflectionDecision.SKIP -> { }
+                                    }
+                                }
+                            }
+
                             toolResult.artifacts.forEach { artifact ->
                                 pendingArtifacts += tc.function.name to artifact
                             }
@@ -424,8 +474,49 @@ class AgentEngine(
     }
 
     fun cancelCurrentTask() {
-        currentJob?.cancel()
         _agentState.value = _agentState.value.copy(isProcessing = false)
+    }
+
+    suspend fun sendProactiveMessage(
+        sessionId: String?,
+        content: String,
+        source: ProactiveMessage.Source
+    ) {
+        val targetSessionId = sessionId
+            ?: chatRepository.getAllSessionsOnce().firstOrNull()?.id
+            ?: chatRepository.createSession(title = "Kiwi 主动消息")
+
+        val taggedContent = "[${source.name}] $content"
+        chatRepository.addMessage(targetSessionId, ChatMessage(
+            role = ChatRole.ASSISTANT,
+            content = taggedContent
+        ))
+
+        ProactiveMessageBus.emit(targetSessionId, content, source)
+
+        try {
+            val ctx = com.orizon.openkiwi.OpenKiwiApp.instance
+            val intent = android.content.Intent(ctx, com.orizon.openkiwi.MainActivity::class.java).apply {
+                flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+            val pi = android.app.PendingIntent.getActivity(ctx, 0, intent,
+                android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE)
+
+            val sourceLabel = ProactiveMessage(null, "", source).sourceName
+            val notification = androidx.core.app.NotificationCompat.Builder(ctx, com.orizon.openkiwi.OpenKiwiApp.CHANNEL_ALERTS)
+                .setSmallIcon(com.orizon.openkiwi.R.mipmap.ic_launcher)
+                .setContentTitle("Kiwi: $sourceLabel")
+                .setContentText(content.take(100))
+                .setStyle(androidx.core.app.NotificationCompat.BigTextStyle().bigText(content.take(500)))
+                .setAutoCancel(true)
+                .setContentIntent(pi)
+                .build()
+
+            val nm = ctx.getSystemService(android.content.Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+            nm.notify(System.currentTimeMillis().toInt() and 0x7FFF, notification)
+        } catch (e: Exception) {
+            Log.w("AgentEngine", "Failed to post proactive notification", e)
+        }
     }
 
     /**
@@ -483,7 +574,7 @@ class AgentEngine(
         val selected = ToolRetriever.selectTools(
             tools = enabledTools,
             query = query,
-            topK = 12,
+            topK = 15,
             pinNames = pinNames
         )
         val fallbackMin = minOf(10, (enabledTools.size + 1) / 2).coerceAtLeast(6)
@@ -545,6 +636,7 @@ class AgentEngine(
                     ChatRole.USER -> UnifiedRole.USER
                     ChatRole.ASSISTANT -> UnifiedRole.ASSISTANT
                     ChatRole.TOOL -> UnifiedRole.TOOL
+                    null -> UnifiedRole.ASSISTANT
                 },
                 content = msg.content,
                 toolCalls = msg.toolCalls?.map {

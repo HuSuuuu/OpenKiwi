@@ -172,6 +172,18 @@ data class McpServerConfigEntity(
     val createdAt: Long = System.currentTimeMillis()
 )
 
+@Entity(tableName = "reminders")
+data class ReminderEntity(
+    @PrimaryKey val id: String,
+    val message: String,
+    val triggerAtMs: Long,
+    val repeatIntervalMs: Long = 0,
+    val sessionId: String? = null,
+    val enabled: Boolean = true,
+    val firedCount: Int = 0,
+    val createdAt: Long = System.currentTimeMillis()
+)
+
 @Entity(
     tableName = "rag_chunks",
     indices = [androidx.room.Index(value = ["path"])]

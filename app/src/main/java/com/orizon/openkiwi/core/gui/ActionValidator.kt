@@ -73,8 +73,8 @@ class ActionValidator(private val taskContext: GuiTaskContext) {
         if (consecutiveWaits >= 3) {
             return ValidationResult.Invalid("已连续等待 $consecutiveWaits 次，请执行其他操作")
         }
-        if (action.durationMs > 5000) {
-            return ValidationResult.Modified(GuiAction.Wait(2000), "等待时间过长，已缩短")
+        if (action.durationMs > 15000) {
+            return ValidationResult.Modified(GuiAction.Wait(8000), "等待时间过长，已缩短至 8 秒")
         }
         return ValidationResult.Valid
     }

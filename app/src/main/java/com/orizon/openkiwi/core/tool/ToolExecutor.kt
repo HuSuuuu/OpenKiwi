@@ -7,9 +7,17 @@ import kotlinx.coroutines.withTimeout
 class ToolExecutor(
     private val registry: ToolRegistry,
     private val auditLogDao: AuditLogDao? = null
-) {
+) : ToolContext {
     var requireConfirmationForDangerous: Boolean = true
     var onConfirmationRequired: (suspend (Tool, Map<String, Any?>) -> Boolean)? = null
+
+    override suspend fun callTool(name: String, params: Map<String, Any?>): ToolResult {
+        return execute(name, params)
+    }
+
+    override fun listToolNames(): List<String> {
+        return registry.getEnabledTools().map { it.definition.name }
+    }
 
     companion object {
         /**
@@ -52,6 +60,7 @@ class ToolExecutor(
         }
 
         val effectiveTimeout = timeoutMs ?: tool.definition.timeoutMs
+        tool.toolContext = this
 
         val startTime = System.currentTimeMillis()
         val result = runCatching {

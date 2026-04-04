@@ -293,6 +293,36 @@ interface McpServerConfigDao {
 }
 
 @Dao
+interface ReminderDao {
+    @Query("SELECT * FROM reminders ORDER BY triggerAtMs ASC")
+    fun observeAll(): Flow<List<ReminderEntity>>
+
+    @Query("SELECT * FROM reminders ORDER BY triggerAtMs ASC")
+    suspend fun getAllOnce(): List<ReminderEntity>
+
+    @Query("SELECT * FROM reminders WHERE enabled = 1 ORDER BY triggerAtMs ASC")
+    suspend fun getAllEnabled(): List<ReminderEntity>
+
+    @Query("SELECT * FROM reminders WHERE id = :id")
+    suspend fun getById(id: String): ReminderEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(reminder: ReminderEntity)
+
+    @Update
+    suspend fun update(reminder: ReminderEntity)
+
+    @Query("DELETE FROM reminders WHERE id = :id")
+    suspend fun deleteById(id: String)
+
+    @Query("DELETE FROM reminders WHERE triggerAtMs < :before AND repeatIntervalMs = 0")
+    suspend fun deleteExpired(before: Long = System.currentTimeMillis())
+
+    @Query("UPDATE reminders SET firedCount = firedCount + 1 WHERE id = :id")
+    suspend fun incrementFired(id: String)
+}
+
+@Dao
 interface RagChunkDao {
     @Query("DELETE FROM rag_chunks")
     suspend fun clearAll()

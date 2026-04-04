@@ -89,7 +89,7 @@ class ChatRepository(
     suspend fun addMessage(sessionId: String, message: ChatMessage): Long {
         val entity = MessageEntity(
             sessionId = sessionId,
-            role = message.role.name,
+            role = (message.role ?: ChatRole.ASSISTANT).name,
             content = message.content,
             toolCallsJson = null,
             toolCallId = message.toolCallId

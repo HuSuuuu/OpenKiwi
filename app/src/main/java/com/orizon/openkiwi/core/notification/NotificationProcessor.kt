@@ -32,13 +32,24 @@ class NotificationProcessor(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val json = Json { ignoreUnknownKeys = true }
 
+    var agentEngine: com.orizon.openkiwi.core.agent.AgentEngine? = null
+    var chatRepository: com.orizon.openkiwi.data.repository.ChatRepository? = null
+    var calendarTool: com.orizon.openkiwi.core.tool.builtin.CalendarTool? = null
+
     companion object {
         private const val TAG = "NotificationProcessor"
-        private val SYSTEM_PROMPT = """
-你是一个手机通知分析助手。分析用户收到的通知，用纯JSON回复（不要markdown）：
-{"importance":0,"summary":"一句话摘要","action":"建议操作，无则留空"}
+        private const val SYSTEM_PROMPT_TEMPLATE = """你是一个手机通知分析助手。分析用户收到的通知，用纯JSON回复（不要markdown）：
+{"importance":0,"summary":"一句话摘要","action":"建议操作，无则留空","calendar":null}
 importance: 0=可忽略(广告/推广), 1=一般信息, 2=需要关注(验证码/重要消息/支付/日程)
-""".trimIndent()
+如果通知内容包含日程、会议、约会、提醒等时间相关信息，calendar字段填写：
+{"title":"事件标题","start_time":"yyyy-MM-dd'T'HH:mm","end_time":"yyyy-MM-dd'T'HH:mm或null","location":"地点或null"}
+否则calendar字段为null。注意根据当前日期推算"明天""后天""下周一"等相对时间。"""
+
+        private fun buildSystemPrompt(): String {
+            val now = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm E", java.util.Locale.CHINA)
+                .format(java.util.Date())
+            return "$SYSTEM_PROMPT_TEMPLATE\n当前时间: $now"
+        }
     }
 
     fun process(info: NotificationInfo) {
@@ -56,7 +67,7 @@ importance: 0=可忽略(广告/推广), 1=一般信息, 2=需要关注(验证码
                 val request = ChatCompletionRequest(
                     model = config.modelName,
                     messages = listOf(
-                        ChatMessage(role = ChatRole.SYSTEM, content = SYSTEM_PROMPT),
+                        ChatMessage(role = ChatRole.SYSTEM, content = buildSystemPrompt()),
                         ChatMessage(role = ChatRole.USER, content = userMsg)
                     ),
                     temperature = 0.1,
@@ -80,6 +91,15 @@ importance: 0=可忽略(广告/推广), 1=一般信息, 2=需要关注(验证码
                 noteDao.insertNote(note)
                 if (note.status == "pending") {
                     postBadgeNotification(note.summary.ifBlank { info.title })
+                }
+
+                if (analysis.calendar != null) {
+                    tryAddCalendarEvent(analysis.calendar)
+                }
+
+                val autoForward = userPreferences.notificationAutoForward.first()
+                if (autoForward && analysis.importance >= 2) {
+                    forwardToAgent(info, analysis)
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to process notification", e)
@@ -132,10 +152,59 @@ importance: 0=可忽略(广告/推广), 1=一般信息, 2=需要关注(验证码
         }.getOrDefault(AnalysisResult(importance = 1, summary = raw.take(100), action = ""))
     }
 
+    private suspend fun tryAddCalendarEvent(cal: CalendarInfo) {
+        val tool = calendarTool ?: return
+        try {
+            val params = mutableMapOf<String, Any?>(
+                "action" to "add_event",
+                "title" to cal.title,
+                "start_time" to cal.start_time
+            )
+            cal.end_time?.let { params["end_time"] = it }
+            cal.location?.let { params["location"] = it }
+            val result = tool.execute(params)
+            Log.i(TAG, "Calendar auto-add: ${if (result.success) "OK" else result.error}")
+        } catch (e: Exception) {
+            Log.w(TAG, "Calendar auto-add failed", e)
+        }
+    }
+
+    private suspend fun forwardToAgent(info: NotificationInfo, analysis: AnalysisResult) {
+        val engine = agentEngine ?: return
+        val repo = chatRepository ?: return
+        try {
+            val sessions = repo.getAllSessionsOnce()
+            val sessionId = sessions.firstOrNull()?.id ?: return
+
+            val summary = buildString {
+                append("来自 ${info.packageName}:\n${analysis.summary}")
+                if (analysis.action.isNotBlank()) append("\n建议: ${analysis.action}")
+            }
+            engine.sendProactiveMessage(
+                sessionId, summary,
+                com.orizon.openkiwi.core.agent.ProactiveMessage.Source.NOTIFICATION
+            )
+
+            val msg = "[通知转发] $summary"
+            engine.processMessage(sessionId, msg).collect {}
+        } catch (e: Exception) {
+            Log.w(TAG, "Forward to agent failed", e)
+        }
+    }
+
+    @Serializable
+    private data class CalendarInfo(
+        val title: String = "",
+        val start_time: String = "",
+        val end_time: String? = null,
+        val location: String? = null
+    )
+
     @Serializable
     private data class AnalysisResult(
         val importance: Int = 0,
         val summary: String = "",
-        val action: String = ""
+        val action: String = "",
+        val calendar: CalendarInfo? = null
     )
 }

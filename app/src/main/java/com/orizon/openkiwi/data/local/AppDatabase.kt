@@ -23,10 +23,11 @@ import com.orizon.openkiwi.data.local.entity.*
         AuditLogEntity::class,
         ArtifactEntity::class,
         ScheduledTaskEntity::class,
+        ReminderEntity::class,
         RagChunkEntity::class,
         McpServerConfigEntity::class
     ],
-    version = 12,
+    version = 13,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -43,6 +44,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun artifactDao(): ArtifactDao
     abstract fun scheduledTaskDao(): ScheduledTaskDao
     abstract fun ragChunkDao(): RagChunkDao
+    abstract fun reminderDao(): ReminderDao
     abstract fun mcpServerConfigDao(): McpServerConfigDao
 
     companion object {
@@ -77,6 +79,23 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_12_13 = object : Migration(12, 13) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS reminders (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        message TEXT NOT NULL,
+                        triggerAtMs INTEGER NOT NULL,
+                        repeatIntervalMs INTEGER NOT NULL DEFAULT 0,
+                        sessionId TEXT,
+                        enabled INTEGER NOT NULL DEFAULT 1,
+                        firedCount INTEGER NOT NULL DEFAULT 0,
+                        createdAt INTEGER NOT NULL DEFAULT 0
+                    )
+                """.trimIndent())
+            }
+        }
+
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
@@ -87,7 +106,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "openkiwi_database"
                 )
-                    .addMigrations(MIGRATION_9_10, MIGRATION_10_11)
+                    .addMigrations(MIGRATION_9_10, MIGRATION_10_11, MIGRATION_12_13)
                     .fallbackToDestructiveMigration()
                     .build()
                 INSTANCE = instance

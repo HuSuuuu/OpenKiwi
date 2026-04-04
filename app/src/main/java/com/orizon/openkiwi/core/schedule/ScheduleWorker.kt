@@ -33,6 +33,14 @@ class ScheduleWorker(
                 }
             }
             dao.updateLastRun(taskId, System.currentTimeMillis())
+
+            val resultSummary = sb.toString().take(500).ifBlank { "任务已完成" }
+            container.agentEngine.sendProactiveMessage(
+                sid,
+                "定时任务「${task.name}」执行完毕:\n$resultSummary",
+                com.orizon.openkiwi.core.agent.ProactiveMessage.Source.SCHEDULE
+            )
+
             Log.i(TAG, "ScheduleWorker done task=$taskId len=${sb.length}")
             Result.success()
         } catch (e: Exception) {

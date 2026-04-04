@@ -7,13 +7,14 @@ import kotlinx.serialization.json.Json
 
 class CreateToolTool(
     private val customToolDao: CustomToolDao,
-    private val toolRegistry: ToolRegistry
+    private val toolRegistry: ToolRegistry,
+    private val codeSandbox: com.orizon.openkiwi.core.code.CodeSandbox? = null
 ) : Tool {
 
     override val definition = ToolDefinition(
         name = "create_tool",
         description = "Create, update, or delete a custom tool. " +
-                "Action 'create': define a new tool with name, description, params, and a shell script implementation. " +
+                "Action 'create': define a new tool with name, description, params, and a shell/python script. " +
                 "Action 'delete': remove a custom tool by name. " +
                 "Action 'list': list all custom tools.",
         category = ToolCategory.CUSTOM.name,
@@ -45,9 +46,16 @@ class CreateToolTool(
                 description = "JSON array of required parameter names, e.g. [\"query\"]",
                 required = false
             ),
+            "language" to ToolParamDef(
+                type = "string",
+                description = "Script language: 'shell' (default) or 'python'",
+                required = false,
+                defaultValue = "shell",
+                enumValues = listOf("shell", "python")
+            ),
             "script" to ToolParamDef(
                 type = "string",
-                description = "Shell script that implements the tool. Use \$param_name or \${param_name} to reference parameters. Params are also available as TOOL_param_name env vars.",
+                description = "Script that implements the tool. Use \$param_name or \${param_name} to reference parameters. For shell: also available as TOOL_param_name env vars. For python: params are injected as local variables.",
                 required = false
             )
         ),
@@ -98,16 +106,19 @@ class CreateToolTool(
             return ToolResult(definition.name, false, "", error = "Invalid required_params: ${it.message}")
         }
 
+        val language = params["language"]?.toString()?.lowercase() ?: "shell"
+
         val entity = CustomToolEntity(
             name = name,
             description = desc,
             paramsJson = paramsJson,
             requiredParamsJson = requiredParams,
-            script = script
+            script = script,
+            language = language
         )
         customToolDao.insert(entity)
 
-        val dynamicTool = DynamicTool(entity)
+        val dynamicTool = DynamicTool(entity, codeSandbox)
         toolRegistry.register(dynamicTool)
 
         return ToolResult(

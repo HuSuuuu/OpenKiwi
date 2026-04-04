@@ -150,6 +150,16 @@ class GuiAgent(
                 Log.i(TAG, "[$stepCount] result: ok=${result.success}, msg=${result.message}, finish=${result.shouldFinish}")
                 taskContext.updateAction(actionDesc, result.success)
 
+                val settleMs = when (finalAction) {
+                    is GuiAction.Launch -> 0L
+                    is GuiAction.Wait -> 0L
+                    is GuiAction.Tap -> 800L
+                    is GuiAction.Type -> 500L
+                    is GuiAction.Swipe -> 600L
+                    else -> 400L
+                }
+                if (settleMs > 0) delay(settleMs)
+
                 val stepResult = GuiStepResult(stepCount, result.success, result.shouldFinish, parsed.thinking, finalAction, result)
                 onStep(stepResult)
 
@@ -354,7 +364,7 @@ class GuiAgent(
 - do(action="Long Press", element=[x,y])
 - do(action="Type", text="xxx")
 - do(action="Launch", app="应用名")
-- do(action="Back") / do(action="Home") / do(action="Wait")
+- do(action="Back") / do(action="Home") / do(action="Wait", duration=3000)
 - do(action="Take_over", message="原因")
 - finish(message="结果")
 

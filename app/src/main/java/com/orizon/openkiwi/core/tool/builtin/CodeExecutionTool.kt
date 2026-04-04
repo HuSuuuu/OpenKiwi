@@ -1,6 +1,7 @@
 package com.orizon.openkiwi.core.tool.builtin
 
 import com.orizon.openkiwi.core.code.CodeSandbox
+import com.orizon.openkiwi.core.code.PythonEmbeddedEnv
 import com.orizon.openkiwi.core.code.SandboxConfig
 import com.orizon.openkiwi.core.tool.*
 import com.orizon.openkiwi.service.overlay.TerminalOverlayService
@@ -10,7 +11,8 @@ class CodeExecutionTool(private val sandbox: CodeSandbox) : Tool {
 
     override val definition = ToolDefinition(
         name = "code_execution",
-        description = "Execute code in sandbox. python/shell run locally; javascript/powershell require Companion PC.",
+        description = "Execute code in sandbox. python/shell run locally; javascript/powershell require Companion PC. " +
+            PythonEmbeddedEnv.toolDescriptionSuffix(),
         category = ToolCategory.CODE_EXECUTION.name,
         permissionLevel = PermissionLevel.DANGEROUS.name,
         parameters = mapOf(

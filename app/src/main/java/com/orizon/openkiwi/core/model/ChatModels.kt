@@ -13,7 +13,7 @@ enum class ChatRole {
 
 @Serializable
 data class ChatMessage(
-    val role: ChatRole,
+    val role: ChatRole? = null,
     val content: String? = null,
     val name: String? = null,
     @SerialName("tool_calls") val toolCalls: List<ToolCall>? = null,
@@ -125,15 +125,15 @@ data class ToolProperty(
 
 @Serializable
 data class ChatCompletionResponse(
-    val id: String,
-    val model: String,
-    val choices: List<Choice>,
+    val id: String = "",
+    val model: String = "",
+    val choices: List<Choice> = emptyList(),
     val usage: Usage? = null
 )
 
 @Serializable
 data class Choice(
-    val index: Int,
+    val index: Int = 0,
     val message: ChatMessage? = null,
     val delta: ChatMessage? = null,
     @SerialName("finish_reason") val finishReason: String? = null
@@ -141,14 +141,14 @@ data class Choice(
 
 @Serializable
 data class Usage(
-    @SerialName("prompt_tokens") val promptTokens: Int,
-    @SerialName("completion_tokens") val completionTokens: Int,
-    @SerialName("total_tokens") val totalTokens: Int
+    @SerialName("prompt_tokens") val promptTokens: Int = 0,
+    @SerialName("completion_tokens") val completionTokens: Int = 0,
+    @SerialName("total_tokens") val totalTokens: Int = 0
 )
 
 @Serializable
 data class StreamChunk(
-    val id: String,
+    val id: String = "",
     val model: String? = null,
     val choices: List<Choice> = emptyList(),
     val usage: Usage? = null

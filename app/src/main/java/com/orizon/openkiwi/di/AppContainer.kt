@@ -3,11 +3,14 @@ package com.orizon.openkiwi.di
 import android.content.Context
 import com.orizon.openkiwi.core.agent.AgentCommunicationBus
 import com.orizon.openkiwi.core.agent.AgentEngine
+import com.orizon.openkiwi.core.agent.AgentWorkspace
 import com.orizon.openkiwi.core.agent.AppReplyBotTool
 import com.orizon.openkiwi.core.agent.ParasiticQueryTool
 import com.orizon.openkiwi.core.agent.SubAgentManager
 import com.orizon.openkiwi.core.code.CodeSandbox
 import com.orizon.openkiwi.core.code.TerminalSessionManager
+import com.orizon.openkiwi.core.device.BluetoothGattSessionManager
+import com.orizon.openkiwi.core.device.NfcSessionManager
 import com.orizon.openkiwi.core.device.DeviceDiscovery
 import com.orizon.openkiwi.core.device.SSHClient
 import com.orizon.openkiwi.core.device.USBHostManager
@@ -29,10 +32,12 @@ import com.orizon.openkiwi.core.skill.SkillExecutor
 import com.orizon.openkiwi.core.rag.RagSearchTool
 import com.orizon.openkiwi.core.recipe.RecipeExecutor
 import com.orizon.openkiwi.core.recipe.RecipeManager
+import com.orizon.openkiwi.core.reminder.ReminderManager
 import com.orizon.openkiwi.core.schedule.ScheduleManager
 import com.orizon.openkiwi.core.skill.SkillLearner
 import com.orizon.openkiwi.core.voice.VoiceWakeCommandBus
 import com.orizon.openkiwi.core.skill.SkillManager
+import com.orizon.openkiwi.core.tool.PipelineManager
 import com.orizon.openkiwi.core.tool.ToolExecutor
 import com.orizon.openkiwi.core.tool.ToolRegistry
 import com.orizon.openkiwi.core.tool.builtin.*
@@ -112,6 +117,12 @@ class AppContainer(context: Context) {
     val vncClient = VNCClient()
     val feishuApiClient = FeishuApiClient(httpClient)
 
+    // BLE
+    val bleSessionManager = BluetoothGattSessionManager(context)
+
+    // NFC
+    val nfcSessionManager = NfcSessionManager()
+
     // Code execution
     val codeSandbox = CodeSandbox(context)
     val terminalSessionManager = TerminalSessionManager()
@@ -132,6 +143,9 @@ class AppContainer(context: Context) {
     val privacyManager = PrivacyManager(context, database)
 
     val memoryManager = MemoryManager(database.memoryDao())
+    val agentWorkspace = AgentWorkspace(context).also { it.initialize() }
+
+    val reminderManager = ReminderManager(context, database.reminderDao())
 
     val toolRegistry = ToolRegistry().apply {
         // System tools
@@ -177,16 +191,33 @@ class AppContainer(context: Context) {
         // Code execution（canonical: code_execution；code_execute 由 ToolExecutor 映射）
         register(CodeExecutionTool(codeSandbox))
 
+        // BLE & NFC
+        register(BleTool(context, bleSessionManager))
+        register(NfcTool(context, nfcSessionManager))
+
         // Cross-device
         register(SSHTool())
         register(USBTool(usbHostManager))
         register(FeishuTool(feishuApiClient))
         register(RagSearchTool(context, database.ragChunkDao()))
 
-        // Tool creation (lets the LLM create custom tools)
-        register(CreateToolTool(database.customToolDao(), this))
+        // Haptics / Alarm / Biometric / Reminder
+        register(HapticsTool(context))
+        register(AlarmTool(context))
+        register(BiometricGateTool(biometricAuthManager))
+        register(ReminderTool(context, reminderManager))
+
+        // Calendar
+        register(CalendarTool(context))
+
+        // Workspace (self-evolution)
+        register(WorkspaceTool(agentWorkspace))
+
+        // Tool creation (lets the LLM create custom shell/python tools)
+        register(CreateToolTool(database.customToolDao(), this, codeSandbox))
     }
 
+    val pipelineManager = PipelineManager(toolRegistry)
     val toolExecutor = ToolExecutor(toolRegistry, database.auditLogDao())
 
     val skillExecutor = SkillExecutor(toolExecutor)
@@ -211,7 +242,8 @@ class AppContainer(context: Context) {
         smartModelDispatcher = smartModelDispatcher,
         skillLearner = skillLearner,
         userPreferences = userPreferences,
-        llmProviderFactory = llmProviderFactory
+        llmProviderFactory = llmProviderFactory,
+        agentWorkspace = agentWorkspace
     )
 
     val communicationBus = AgentCommunicationBus()
@@ -271,6 +303,10 @@ class AppContainer(context: Context) {
         companionServer.apiRouter = apiRouter
         codeSandbox.companionServer = companionServer
 
+        notificationProcessor.agentEngine = agentEngine
+        notificationProcessor.chatRepository = chatRepository
+        notificationProcessor.calendarTool = toolRegistry.getTool("calendar") as? CalendarTool
+
         toolRegistry.register(SubAgentTool(subAgentManager))
         toolRegistry.register(SkillTool(skillManager, skillExecutor))
         toolRegistry.register(ScheduledTaskTool(database.scheduledTaskDao(), scheduleManager))
@@ -278,14 +314,17 @@ class AppContainer(context: Context) {
         toolRegistry.register(ParasiticQueryTool(guiAgent))
         toolRegistry.register(AppReplyBotTool(guiAgent))
         toolRegistry.register(RecipeTool(recipeManager, recipeExecutor))
+        toolRegistry.register(PipelineManagementTool(pipelineManager, toolRegistry))
 
         Thread {
             kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
                 try {
                     database.customToolDao().getEnabledTools().forEach { entity ->
-                        toolRegistry.register(DynamicTool(entity))
+                        toolRegistry.register(DynamicTool(entity, codeSandbox))
                     }
-                } catch (_: Exception) {}
+                } catch (e: Exception) {
+                    android.util.Log.e("AppContainer", "Failed to load dynamic tools", e)
+                }
             }
         }.start()
 
@@ -307,7 +346,9 @@ class AppContainer(context: Context) {
                             FeishuConfig(appId = appId, appSecret = appSecret)
                         )
                     }
-                } catch (_: Exception) {}
+                } catch (e: Exception) {
+                    android.util.Log.e("AppContainer", "Feishu authentication failed", e)
+                }
             }
         }.start()
 

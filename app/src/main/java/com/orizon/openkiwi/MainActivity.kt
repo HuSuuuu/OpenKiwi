@@ -16,9 +16,12 @@ class MainActivity : ComponentActivity() {
         const val EXTRA_WIDGET_PROMPT = "widget_prompt"
     }
 
+    private val nfcSessionManager by lazy { OpenKiwiApp.instance.container.nfcSessionManager }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         dispatchWidgetPrompt(intent)
+        nfcSessionManager.handleIntent(intent)
         enableEdgeToEdge()
         setContent {
             val prefs = OpenKiwiApp.instance.container.userPreferences
@@ -34,9 +37,20 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        nfcSessionManager.enableForegroundDispatch(this)
+    }
+
+    override fun onPause() {
+        nfcSessionManager.disableForegroundDispatch(this)
+        super.onPause()
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         dispatchWidgetPrompt(intent)
+        nfcSessionManager.handleIntent(intent)
     }
 
     private fun dispatchWidgetPrompt(intent: Intent?) {

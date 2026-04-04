@@ -70,7 +70,8 @@ fun ChatScreen(
     onNavigateToArtifacts: () -> Unit = {},
     onNavigateToSchedule: () -> Unit = {},
     onNavigateToRecipes: () -> Unit = {},
-    onNavigateToMcp: () -> Unit = {}
+    onNavigateToMcp: () -> Unit = {},
+    onNavigateToWorkspace: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val sessions by viewModel.sessions.collectAsState(initial = emptyList())
@@ -148,6 +149,7 @@ fun ChatScreen(
                 onScheduleClick = { scope.launch { drawerState.snapTo(DrawerValue.Closed); onNavigateToSchedule() } },
                 onRecipesClick = { scope.launch { drawerState.snapTo(DrawerValue.Closed); onNavigateToRecipes() } },
                 onMcpClick = { scope.launch { drawerState.snapTo(DrawerValue.Closed); onNavigateToMcp() } },
+                onWorkspaceClick = { scope.launch { drawerState.snapTo(DrawerValue.Closed); onNavigateToWorkspace() } },
                 pendingNoteCount = pendingNoteCount
             )
         }
@@ -279,6 +281,52 @@ fun ChatScreen(
                         )
                         IconButton(onClick = { viewModel.clearError() }, modifier = Modifier.size(20.dp)) {
                             Icon(Icons.Default.Close, null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+
+                AnimatedVisibility(visible = uiState.proactiveHint != null) {
+                    uiState.proactiveHint?.let { hint ->
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 4.dp)
+                                .clickable { viewModel.clearProactiveHint() },
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.tertiaryContainer,
+                            tonalElevation = 2.dp
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Outlined.Notifications,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                    tint = MaterialTheme.colorScheme.onTertiaryContainer
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    hint,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                IconButton(
+                                    onClick = { viewModel.clearProactiveHint() },
+                                    modifier = Modifier.size(20.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Close,
+                                        null,
+                                        modifier = Modifier.size(14.dp),
+                                        tint = MaterialTheme.colorScheme.onTertiaryContainer
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -1033,6 +1081,7 @@ private fun SessionDrawer(
     onScheduleClick: () -> Unit = {},
     onRecipesClick: () -> Unit = {},
     onMcpClick: () -> Unit = {},
+    onWorkspaceClick: () -> Unit = {},
     pendingNoteCount: Int = 0
 ) {
     var toolsExpanded by remember { mutableStateOf(false) }
@@ -1156,7 +1205,7 @@ private fun SessionDrawer(
                 )
                 DrawerToolRow("\u7EC8\u7AEF", onTerminalClick, "\u8BBE\u5907", onDevicesClick)
                 DrawerToolRow("\u5DE5\u5177", onToolsClick, "\u8BED\u97F3", onVoiceClick)
-                DrawerToolRow("\u65E5\u5FD7", onAuditLogClick, null, null)
+                DrawerToolRow("\u65E5\u5FD7", onAuditLogClick, "\u5DE5\u4F5C\u533A", onWorkspaceClick)
             }
         }
 

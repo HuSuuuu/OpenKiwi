@@ -58,9 +58,17 @@ data class ToolArtifact(
     val sizeBytes: Long? = null
 )
 
+interface ToolContext {
+    suspend fun callTool(name: String, params: Map<String, Any?>): ToolResult
+    fun listToolNames(): List<String>
+}
+
 interface Tool {
     val definition: ToolDefinition
     val supportsStreaming: Boolean get() = false
+    var toolContext: ToolContext?
+        get() = null
+        set(_) {}
     suspend fun execute(params: Map<String, Any?>): ToolResult
     suspend fun executeStreaming(params: Map<String, Any?>): kotlinx.coroutines.flow.Flow<String> {
         val result = execute(params)

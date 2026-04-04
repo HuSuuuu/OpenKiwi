@@ -28,6 +28,11 @@ data class SkillStep(
     val onError: String = "stop"
 )
 
+/**
+ * 持久化 **工作流技能**（多步工具链，Room + [SkillDefinition]）。
+ *
+ * 与 OpenClaw 生态的 `SKILL.md` 指令包不同；后者由 `OpenClawSkillRegistry`（`core.openclaw`）管理。
+ */
 class SkillManager(private val skillDao: SkillDao) {
 
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }

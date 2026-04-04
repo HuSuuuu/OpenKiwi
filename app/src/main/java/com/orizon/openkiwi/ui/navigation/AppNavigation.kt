@@ -36,6 +36,7 @@ import com.orizon.openkiwi.ui.schedule.ScheduleViewModel
 import com.orizon.openkiwi.ui.recipe.RecipeScreen
 import com.orizon.openkiwi.ui.settings.McpSettingsScreen
 import com.orizon.openkiwi.ui.recipe.RecipeViewModel
+import com.orizon.openkiwi.ui.canvas.CanvasScreen
 
 object Routes {
     const val CHAT = "chat"
@@ -55,6 +56,7 @@ object Routes {
     const val RECIPES = "recipes"
     const val MCP_SETTINGS = "mcp_settings"
     const val WORKSPACE = "workspace"
+    const val CANVAS = "canvas"
 }
 
 private const val KEY_REOPEN_DRAWER = "reopen_drawer"
@@ -106,7 +108,8 @@ fun AppNavigation() {
                 onNavigateToSchedule = { navController.navigate(Routes.SCHEDULE) { launchSingleTop = true } },
                 onNavigateToRecipes = { navController.navigate(Routes.RECIPES) { launchSingleTop = true } },
                 onNavigateToMcp = { navController.navigate(Routes.MCP_SETTINGS) { launchSingleTop = true } },
-                onNavigateToWorkspace = { navController.navigate(Routes.WORKSPACE) { launchSingleTop = true } }
+                onNavigateToWorkspace = { navController.navigate(Routes.WORKSPACE) { launchSingleTop = true } },
+                onNavigateToCanvas = { navController.navigate(Routes.CANVAS) { launchSingleTop = true } }
             )
         }
 
@@ -140,7 +143,10 @@ fun AppNavigation() {
 
         composable(Routes.SKILLS) {
             val vm: SkillsViewModel = viewModel(
-                factory = SkillsViewModel.Factory(container.skillManager)
+                factory = SkillsViewModel.Factory(
+                    container.skillManager,
+                    container.openClawSkillRegistry
+                )
             )
             SkillsScreen(viewModel = vm, onBack = { backAndReopenDrawer(navController) })
         }
@@ -228,6 +234,10 @@ fun AppNavigation() {
                 workspace = container.agentWorkspace,
                 onBack = { backAndReopenDrawer(navController) }
             )
+        }
+
+        composable(Routes.CANVAS) {
+            CanvasScreen(onBack = { backAndReopenDrawer(navController) })
         }
     }
 }

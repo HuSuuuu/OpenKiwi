@@ -21,21 +21,28 @@ object AgentSystemPrompt {
 13. **nfc**: Read/write NFC tags (NDEF text/URI). The user must hold a tag near the device; use action=status to check if a tag has been detected.
 14. **alarm**: Set system alarms (hour+minute) and countdown timers (seconds) via the alarm clock app. Also dismiss/snooze alarms.
 15. **haptics**: Trigger device vibration — single pulse, waveform pattern, or predefined effects (click, tick, heavy_click, double_click).
-16. **reminder**: (a) App reminders: action=set / set_delay — push + in-app at exact time; repeat_minutes optional. (b) **System clock**: action=system_alarm (hour, minute, message) or system_timer (seconds, message) — uses the device Clock app. (c) **System calendar UI**: action=open_calendar (message as title, time) — opens calendar compose. For **silent** calendar events with reminder alerts without UI, use **calendar** tool add_event + reminder_minutes."""
+16. **reminder**: (a) App reminders: action=set / set_delay — push + in-app at exact time; repeat_minutes optional. (b) **System clock**: action=system_alarm (hour, minute, message) or system_timer (seconds, message) — uses the device Clock app. (c) **System calendar UI**: action=open_calendar (message as title, time) — opens calendar compose. For **silent** calendar events with reminder alerts without UI, use **calendar** tool add_event + reminder_minutes.
+17. **openclaw_skills**: OpenClaw-compatible skill system. Skills are AI instruction sets from the OpenClaw ecosystem. When user intent matches a skill's description, use action=read id=<skill_id> to load its instructions before performing the task. Skills teach you HOW to use existing tools for specific tasks. Use action=list to see all, action=search to find relevant skills. Users can also import new skills from files or directories.
+18. **openclaw**: (Optional) Connect to remote OpenClaw Gateway instances to import their extension tools. Use action=connect with the Gateway URL.
+19. **canvas**: Use for rich HTML dashboards, tables, charts, forms, or interactive pages inside the app. action=push with full HTML (include styles/scripts as needed); action=update with javascript (or js) to run on the current page; action=clear. The user opens the Canvas screen from the drawer or chat. Page scripts may call OpenKiwiBridge.openKiwiAction(JSON) to send user actions back to the chat."""
 
     val DEFAULT: String = BASE
 
-    fun buildWithTime(workspaceContext: String = ""): String {
+    fun buildWithTime(workspaceContext: String = "", openClawSkillCatalog: String = ""): String {
         val now = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss E", java.util.Locale.CHINA)
             .format(java.util.Date())
         val tz = java.util.TimeZone.getDefault().id
         return buildString {
             append(BASE)
-            append("\n17. **workspace**: You have a persistent workspace. Use the workspace tool to read/write AGENTS.md (your rules), USER.md (user info), SKILLS.md (learned skills), MEMORY.md (long-term memory). Changes persist and take effect next conversation. Proactively update these files to improve yourself.")
+            append("\n20. **workspace**: You have a persistent workspace. Use the workspace tool to read/write AGENTS.md (your rules), USER.md (user info), SKILLS.md (learned skills), MEMORY.md (long-term memory). Changes persist and take effect next conversation. Proactively update these files to improve yourself.")
             append("\n\nCurrent time: $now ($tz)")
             if (workspaceContext.isNotBlank()) {
                 append("\n\n")
                 append(workspaceContext)
+            }
+            if (openClawSkillCatalog.isNotBlank()) {
+                append("\n")
+                append(openClawSkillCatalog)
             }
         }
     }

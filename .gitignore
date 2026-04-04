@@ -28,3 +28,6 @@ Untitled
 # Python
 __pycache__/
 *.pyc
+
+# Local reference clone (upstream OpenClaw); do not commit
+openclaw-main/

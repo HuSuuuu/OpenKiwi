@@ -3,6 +3,7 @@ package com.orizon.openkiwi.core.agent
 import com.orizon.openkiwi.core.llm.*
 import com.orizon.openkiwi.core.memory.MemoryManager
 import com.orizon.openkiwi.core.model.*
+import com.orizon.openkiwi.core.openclaw.OpenClawSkillRegistry
 import com.orizon.openkiwi.core.skill.SkillLearner
 import com.orizon.openkiwi.core.tool.ToolArtifact
 import com.orizon.openkiwi.core.tool.ToolExecutor
@@ -23,8 +24,10 @@ import kotlinx.coroutines.flow.*
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 class AgentEngine(
@@ -39,7 +42,8 @@ class AgentEngine(
     private val userPreferences: UserPreferences? = null,
     private val llmProviderFactory: LlmProviderFactory? = null,
     private val agentWorkspace: AgentWorkspace? = null,
-    val reflector: AgentReflector = AgentReflector(apiClient)
+    val reflector: AgentReflector = AgentReflector(apiClient),
+    private val openClawSkillRegistry: OpenClawSkillRegistry? = null
 ) {
     private val json = Json { ignoreUnknownKeys = true }
     private val _agentState = MutableStateFlow(AgentState())
@@ -85,7 +89,8 @@ class AgentEngine(
 
         if (messages.none { it.role == ChatRole.SYSTEM }) {
             val wsCtx = agentWorkspace?.buildPromptContext() ?: ""
-            messages.add(0, ChatMessage(role = ChatRole.SYSTEM, content = AgentSystemPrompt.buildWithTime(wsCtx)))
+            val skillCatalog = openClawSkillRegistry?.buildSkillCatalog() ?: ""
+            messages.add(0, ChatMessage(role = ChatRole.SYSTEM, content = AgentSystemPrompt.buildWithTime(wsCtx, skillCatalog)))
         }
 
         val parasiticOn = ParasiticQueryTool.enabled
@@ -224,7 +229,7 @@ class AgentEngine(
 
                         for (tc in toolCalls) {
                             val params = parseToolArguments(tc.function.arguments)
-                            val callingMarker = "\n[Calling tool: ${tc.function.name}]\n"
+                            val callingMarker = emitCallingWithArgs(tc.function.name, params)
                             globalToolLog.append(callingMarker)
                             emit(callingMarker)
 
@@ -315,7 +320,7 @@ class AgentEngine(
                         iterationMessages.add(message)
                         for (tc in message.toolCalls) {
                             val params = parseToolArguments(tc.function.arguments)
-                            val callingMarker = "\n[Calling tool: ${tc.function.name}]\n"
+                            val callingMarker = emitCallingWithArgs(tc.function.name, params)
                             globalToolLog.append(callingMarker)
                             emit(callingMarker)
 
@@ -599,6 +604,28 @@ class AgentEngine(
         }.getOrDefault(emptyMap())
     }
 
+    /** 单行 JSON，供聊天 UI 解析并展示工具参数摘要 */
+    private fun toolParamsToJsonLine(params: Map<String, Any?>): String? {
+        if (params.isEmpty()) return null
+        val obj = buildJsonObject {
+            params.forEach { (k, v) ->
+                when (v) {
+                    null -> put(k, JsonNull)
+                    is String -> put(k, JsonPrimitive(v))
+                    is Boolean -> put(k, JsonPrimitive(v))
+                    is Number -> put(k, JsonPrimitive(v.toDouble()))
+                    else -> put(k, JsonPrimitive(v.toString()))
+                }
+            }
+        }
+        return json.encodeToString(JsonObject.serializer(), obj)
+    }
+
+    private fun emitCallingWithArgs(toolName: String, params: Map<String, Any?>): String = buildString {
+        append("\n[Calling tool: $toolName]\n")
+        toolParamsToJsonLine(params)?.let { append(it).append("\n") }
+    }
+
     /** 部分模型会对 code 等字段返回非 string 的 JSON；避免 jsonPrimitive 崩溃并丢参 */
     private fun jsonArgumentToKotlin(value: JsonElement): String = when (value) {
         is JsonPrimitive -> value.content
@@ -713,7 +740,7 @@ class AgentEngine(
                     content = fullContent.toString().takeIf { it.isNotBlank() }, toolCalls = toolCalls))
                 for (tc in toolCalls) {
                     val params = parseToolArguments(tc.function.arguments)
-                    val marker = "\n[Calling tool: ${tc.function.name}]\n"
+                    val marker = emitCallingWithArgs(tc.function.name, params)
                     globalToolLog.append(marker); emitted += marker
                     val result = toolExecutor.execute(tc.function.name, params, sessionId)
                     result.artifacts.forEach { pendingArtifacts += tc.function.name to it }
@@ -759,7 +786,7 @@ class AgentEngine(
                 messages.add(ChatMessage(role = ChatRole.ASSISTANT, content = response.content, toolCalls = toolCalls))
                 for (tc in toolCalls) {
                     val params = parseToolArguments(tc.function.arguments)
-                    val marker = "\n[Calling tool: ${tc.function.name}]\n"
+                    val marker = emitCallingWithArgs(tc.function.name, params)
                     globalToolLog.append(marker); emitted += marker
                     val toolResult = toolExecutor.execute(tc.function.name, params, sessionId)
                     toolResult.artifacts.forEach { pendingArtifacts += tc.function.name to it }

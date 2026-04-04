@@ -32,7 +32,9 @@ import com.orizon.openkiwi.ui.components.MessageBubble
 import com.orizon.openkiwi.ui.components.MessageUiModel
 import com.orizon.openkiwi.ui.components.ThinkingSection
 import com.orizon.openkiwi.ui.components.ToolAction
-import com.orizon.openkiwi.ui.components.ToolCallChip
+import com.orizon.openkiwi.ui.components.ToolCallCard
+import com.orizon.openkiwi.ui.chat.ToolDisplayRegistry
+import android.content.Context
 import com.orizon.openkiwi.ui.components.ArtifactUiModel
 import com.orizon.openkiwi.OpenKiwiApp
 import com.orizon.openkiwi.service.KiwiAccessibilityService
@@ -71,7 +73,8 @@ fun ChatScreen(
     onNavigateToSchedule: () -> Unit = {},
     onNavigateToRecipes: () -> Unit = {},
     onNavigateToMcp: () -> Unit = {},
-    onNavigateToWorkspace: () -> Unit = {}
+    onNavigateToWorkspace: () -> Unit = {},
+    onNavigateToCanvas: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val sessions by viewModel.sessions.collectAsState(initial = emptyList())
@@ -150,6 +153,7 @@ fun ChatScreen(
                 onRecipesClick = { scope.launch { drawerState.snapTo(DrawerValue.Closed); onNavigateToRecipes() } },
                 onMcpClick = { scope.launch { drawerState.snapTo(DrawerValue.Closed); onNavigateToMcp() } },
                 onWorkspaceClick = { scope.launch { drawerState.snapTo(DrawerValue.Closed); onNavigateToWorkspace() } },
+                onCanvasClick = { scope.launch { drawerState.snapTo(DrawerValue.Closed); onNavigateToCanvas() } },
                 pendingNoteCount = pendingNoteCount
             )
         }
@@ -355,6 +359,7 @@ fun ChatScreen(
                         ArtifactOpener.share(context, artifact.path, artifact.mimeType)
                             .onFailure { Toast.makeText(context, it.message ?: "无法分享文件", Toast.LENGTH_SHORT).show() }
                     },
+                    onOpenCanvas = onNavigateToCanvas,
                     modifier = Modifier.weight(1f)
                 )
 
@@ -400,6 +405,7 @@ private fun MessageList(
     waitingSeconds: Int,
     onOpenArtifact: (ArtifactUiModel) -> Unit,
     onShareArtifact: (ArtifactUiModel) -> Unit,
+    onOpenCanvas: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val listState = rememberLazyListState()
@@ -497,7 +503,8 @@ private fun MessageList(
                                 onUseAsDraft = onUseStreamingAsDraft,
                                 onStopGeneration = onStopGeneration,
                                 isProcessing = isProcessing,
-                                showDevWorkspace = showDevWorkspace
+                                showDevWorkspace = showDevWorkspace,
+                                onOpenCanvas = onOpenCanvas
                             )
                         message.isStreaming -> MessageBubble(message = message)
                     }
@@ -511,7 +518,8 @@ private fun MessageList(
                                 onBranch = if (message.role == "ASSISTANT") onBranch else null,
                                 onEditAsDraft = onEditAsDraft,
                                 onOpenArtifact = onOpenArtifact,
-                                onShareArtifact = onShareArtifact
+                                onShareArtifact = onShareArtifact,
+                                onOpenCanvas = onOpenCanvas
                             )
                         }
                         Spacer(Modifier.height(8.dp))
@@ -585,15 +593,17 @@ private fun StreamingMessageWithToolCalls(
     onUseAsDraft: (String) -> Unit,
     onStopGeneration: () -> Unit,
     isProcessing: Boolean,
-    showDevWorkspace: Boolean
+    showDevWorkspace: Boolean,
+    onOpenCanvas: () -> Unit = {}
 ) {
+    val context = LocalContext.current
     val codeBlock = remember(textContent) { extractLatestCodeBlock(textContent) }
     val hasCode = codeBlock.isNotBlank()
     val hasTools = toolCalls.isNotEmpty()
     val shouldShowWorkspace = showDevWorkspace && (hasCode || hasTools)
 
     var editorText by remember(codeBlock) { mutableStateOf(codeBlock) }
-    val terminalText = remember(textContent, toolCalls) { buildTerminalPreview(textContent, toolCalls) }
+    val terminalText = remember(textContent, toolCalls, context) { buildTerminalPreview(context, textContent, toolCalls) }
 
     Column(
         modifier = Modifier
@@ -606,8 +616,11 @@ private fun StreamingMessageWithToolCalls(
                 Spacer(Modifier.height(6.dp))
             }
             toolCalls.forEach { tc ->
-                ToolCallChip(ToolAction(tc.name, tc.status))
-                Spacer(Modifier.height(4.dp))
+                ToolCallCard(
+                    action = ToolAction(tc.name, tc.status, tc.args),
+                    onOpenCanvas = onOpenCanvas
+                )
+                Spacer(Modifier.height(6.dp))
             }
             if (shouldShowWorkspace) {
                 InlineDevWorkspace(
@@ -623,6 +636,7 @@ private fun StreamingMessageWithToolCalls(
                     markdown = textContent,
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurface,
+                    isStreaming = true,
                     modifier = Modifier.padding(vertical = 4.dp)
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -716,6 +730,7 @@ private fun InlineDevWorkspace(
 }
 
 private fun buildTerminalPreview(
+    context: Context,
     streamingText: String,
     toolCalls: List<ToolCallStatus>
 ): String {
@@ -726,7 +741,8 @@ private fun buildTerminalPreview(
             "failed" -> "xx"
             else -> "->"
         }
-        "${idx + 1}. [$symbol] ${tc.name}"
+        val s = ToolDisplayRegistry.resolve(context, tc.name, tc.args)
+        "${idx + 1}. [$symbol] ${s.emoji} ${s.title}"
     }
     val markerLines = streamingText
         .lineSequence()
@@ -1082,6 +1098,7 @@ private fun SessionDrawer(
     onRecipesClick: () -> Unit = {},
     onMcpClick: () -> Unit = {},
     onWorkspaceClick: () -> Unit = {},
+    onCanvasClick: () -> Unit = {},
     pendingNoteCount: Int = 0
 ) {
     var toolsExpanded by remember { mutableStateOf(false) }
@@ -1206,6 +1223,7 @@ private fun SessionDrawer(
                 DrawerToolRow("\u7EC8\u7AEF", onTerminalClick, "\u8BBE\u5907", onDevicesClick)
                 DrawerToolRow("\u5DE5\u5177", onToolsClick, "\u8BED\u97F3", onVoiceClick)
                 DrawerToolRow("\u65E5\u5FD7", onAuditLogClick, "\u5DE5\u4F5C\u533A", onWorkspaceClick)
+                DrawerToolRow("\u753B\u5E03", onCanvasClick, null, null)
             }
         }
 

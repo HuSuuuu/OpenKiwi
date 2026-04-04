@@ -52,6 +52,9 @@ import com.orizon.openkiwi.data.repository.ArtifactRepository
 import com.orizon.openkiwi.data.repository.ModelRepository
 import com.orizon.openkiwi.core.llm.LlmProviderFactory
 import com.orizon.openkiwi.core.mcp.McpManager
+import com.orizon.openkiwi.core.openclaw.OpenClawPluginManager
+import com.orizon.openkiwi.core.openclaw.OpenClawSavedGateway
+import com.orizon.openkiwi.core.openclaw.OpenClawSkillRegistry
 import com.orizon.openkiwi.data.repository.McpServerRepository
 import com.orizon.openkiwi.network.ApiAuth
 import com.orizon.openkiwi.network.ApiRouter
@@ -75,6 +78,12 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 
+/**
+ * 应用级依赖容器：单例组装数据库、网络、 [ToolRegistry]、[AgentEngine] 与后台协程。
+ *
+ * **工具注册**分两段：① [toolRegistry] 初始化块中的大量内置工具；② [init] 中依赖其他组件的迟注册工具与后台任务。
+ * 分区注释见类内；架构总览见项目根目录 `docs/ARCHITECTURE.md`。
+ */
 class AppContainer(context: Context) {
 
     private val containerScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -147,6 +156,11 @@ class AppContainer(context: Context) {
 
     val reminderManager = ReminderManager(context, database.reminderDao())
 
+    val openClawSkillRegistry = OpenClawSkillRegistry(context).also { it.initialize() }
+
+    /**
+     * 模型可见的工具注册表；大部分内置工具在下方 `apply { ... }` 中注册，另有部分在 `init` 中迟注册。
+     */
     val toolRegistry = ToolRegistry().apply {
         // System tools
         register(SystemInfoTool())
@@ -213,6 +227,9 @@ class AppContainer(context: Context) {
         // Workspace (self-evolution)
         register(WorkspaceTool(agentWorkspace))
 
+        // Rich HTML canvas (WebView)
+        register(CanvasTool())
+
         // Tool creation (lets the LLM create custom shell/python tools)
         register(CreateToolTool(database.customToolDao(), this, codeSandbox))
     }
@@ -243,7 +260,8 @@ class AppContainer(context: Context) {
         skillLearner = skillLearner,
         userPreferences = userPreferences,
         llmProviderFactory = llmProviderFactory,
-        agentWorkspace = agentWorkspace
+        agentWorkspace = agentWorkspace,
+        openClawSkillRegistry = openClawSkillRegistry
     )
 
     val communicationBus = AgentCommunicationBus()
@@ -262,6 +280,8 @@ class AppContainer(context: Context) {
 
     val mcpServerRepository = McpServerRepository(database.mcpServerConfigDao())
     val mcpManager = McpManager(toolRegistry, httpClient)
+
+    val openClawPluginManager = OpenClawPluginManager(toolRegistry)
 
     val guiActionParser = GuiActionParser()
     val guiActionExecutor = GuiActionExecutor(context)
@@ -300,6 +320,7 @@ class AppContainer(context: Context) {
     )
 
     init {
+        // —— 跨模块引用（非工具注册）——
         companionServer.apiRouter = apiRouter
         codeSandbox.companionServer = companionServer
 
@@ -307,6 +328,7 @@ class AppContainer(context: Context) {
         notificationProcessor.chatRepository = chatRepository
         notificationProcessor.calendarTool = toolRegistry.getTool("calendar") as? CalendarTool
 
+        // —— 迟注册工具（依赖 subAgent / guiAgent / pipeline / OpenClaw 等）——
         toolRegistry.register(SubAgentTool(subAgentManager))
         toolRegistry.register(SkillTool(skillManager, skillExecutor))
         toolRegistry.register(ScheduledTaskTool(database.scheduledTaskDao(), scheduleManager))
@@ -315,7 +337,10 @@ class AppContainer(context: Context) {
         toolRegistry.register(AppReplyBotTool(guiAgent))
         toolRegistry.register(RecipeTool(recipeManager, recipeExecutor))
         toolRegistry.register(PipelineManagementTool(pipelineManager, toolRegistry))
+        toolRegistry.register(OpenClawTool(openClawPluginManager, userPreferences))
+        toolRegistry.register(OpenClawSkillsTool(openClawSkillRegistry))
 
+        // —— 异步：从数据库加载用户自定义 DynamicTool ——
         Thread {
             kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
                 try {
@@ -328,14 +353,17 @@ class AppContainer(context: Context) {
             }
         }.start()
 
+        // —— 动态插件 JAR/DEX（manifest 扫描）——
         dynamicPluginLoader.scanWithManifests().forEach { (plugin, manifest) ->
             pluginManager.loadPlugin(plugin, manifest)
         }
 
+        // —— 网络与设备：Companion 发现、USB ——
         companionServer.start()
         deviceDiscovery.registerOpenKiwiCompanionService(companionServer.port)
         usbHostManager.startMonitoring()
 
+        // —— 异步：飞书首次认证 ——
         Thread {
             kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
                 try {
@@ -352,6 +380,7 @@ class AppContainer(context: Context) {
             }
         }.start()
 
+        // —— 协程：飞书长连接 / 语音唤醒 / 剪贴板监听 / 定时任务同步 / MCP / OpenClaw Gateway 恢复 ——
         containerScope.launch {
             combine(
                 userPreferences.feishuDirectLongConnection,
@@ -410,6 +439,20 @@ class AppContainer(context: Context) {
                 mcpManager.connectAll(mcpConfigs)
             } catch (e: Exception) {
                 android.util.Log.w("AppContainer", "Failed to start MCP servers", e)
+            }
+        }
+
+        containerScope.launch {
+            try {
+                val savedGateways = userPreferences.getString("openclaw_gateways")
+                if (savedGateways.isNotBlank()) {
+                    val entries = Json.decodeFromString<List<OpenClawSavedGateway>>(savedGateways)
+                    for (entry in entries) {
+                        openClawPluginManager.connect(entry.id, entry.url, entry.token)
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("AppContainer", "Failed to restore OpenClaw connections", e)
             }
         }
     }

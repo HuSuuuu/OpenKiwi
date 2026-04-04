@@ -1,5 +1,6 @@
 package com.orizon.openkiwi.ui.components
 
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -23,11 +24,184 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-private const val MAX_PARSE_LENGTH = 60_000
+// ── Syntax highlight palette (VSCode Dark+ inspired) ─────────────────────────
+private val HL_KEYWORD  = Color(0xFF569CD6)  // blue
+private val HL_STRING   = Color(0xFFCE9178)  // orange
+private val HL_COMMENT  = Color(0xFF6A9955)  // green
+private val HL_NUMBER   = Color(0xFFB5CEA8)  // light green
+private val HL_ANNOT    = Color(0xFFDDCE9F)  // yellow-ish (annotations/decorators)
+private val HL_TYPE     = Color(0xFF4EC9B0)  // teal (capitalised identifiers)
+private val HL_DEFAULT  = Color(0xFFD4D4D4)  // light grey
+private val CODE_BG     = Color(0xFF1E1E1E)  // editor background
+private val CODE_HDR_BG = Color(0xFF252526)  // header bar
 
+private const val MAX_PARSE_LENGTH = 60_000
+private const val MAX_HIGHLIGHT_LENGTH = 12_000
+
+// ── Keywords ──────────────────────────────────────────────────────────────────
+private val KOTLIN_KW = setOf(
+    "fun", "val", "var", "class", "object", "interface", "data", "sealed",
+    "abstract", "open", "override", "suspend", "inline", "reified",
+    "private", "public", "protected", "internal", "companion",
+    "return", "if", "else", "when", "for", "while", "do",
+    "break", "continue", "try", "catch", "finally", "throw",
+    "null", "true", "false", "is", "as", "in", "by",
+    "this", "super", "import", "package", "typealias", "enum", "init",
+    "constructor", "lateinit", "const", "operator", "crossinline",
+    "noinline", "vararg", "actual", "expect", "external", "it"
+)
+
+private val PYTHON_KW = setOf(
+    "def", "class", "import", "from", "return", "if", "elif", "else",
+    "for", "while", "break", "continue", "pass", "try", "except", "finally",
+    "raise", "with", "as", "and", "or", "not", "in", "is",
+    "True", "False", "None", "lambda", "yield", "global", "nonlocal",
+    "assert", "del", "async", "await", "print", "len", "range"
+)
+
+private val JS_KW = setOf(
+    "function", "const", "let", "var", "class", "return",
+    "if", "else", "for", "while", "do", "break", "continue",
+    "try", "catch", "finally", "throw", "new", "this", "super",
+    "import", "export", "from", "of", "in", "instanceof", "typeof",
+    "null", "undefined", "true", "false", "async", "await", "yield",
+    "switch", "case", "default", "delete", "void", "extends", "static",
+    "interface", "type", "enum", "abstract", "implements", "readonly",
+    "public", "private", "protected", "override", "namespace", "declare"
+)
+
+private val JAVA_KW = setOf(
+    "public", "private", "protected", "class", "interface", "extends", "implements",
+    "import", "package", "return", "if", "else", "for", "while", "do",
+    "break", "continue", "try", "catch", "finally", "throw", "throws", "new",
+    "this", "super", "static", "final", "abstract", "synchronized", "volatile",
+    "null", "true", "false", "void", "int", "long", "double", "float",
+    "boolean", "char", "byte", "short", "enum", "switch", "case", "default"
+)
+
+private val SHELL_KW = setOf(
+    "if", "then", "else", "elif", "fi", "for", "do", "done",
+    "while", "until", "case", "esac", "function", "in",
+    "echo", "exit", "return", "export", "local", "set", "unset",
+    "grep", "sed", "awk", "cat", "ls", "cd", "mkdir", "rm", "cp", "mv"
+)
+
+private fun keywordsFor(lang: String) = when (lang.lowercase().trim()) {
+    "kotlin", "kt"                             -> KOTLIN_KW
+    "python", "py"                             -> PYTHON_KW
+    "javascript", "js"                         -> JS_KW
+    "typescript", "ts", "tsx"                  -> JS_KW
+    "java"                                     -> JAVA_KW
+    "shell", "bash", "sh", "zsh"              -> SHELL_KW
+    else                                       -> null
+}
+
+private fun isHashComment(lang: String)  =
+    lang.lowercase() in setOf("python", "py", "shell", "bash", "sh", "zsh", "ruby", "rb", "r", "yaml", "yml", "toml")
+private fun isSlashComment(lang: String) =
+    lang.lowercase() in setOf("kotlin", "kt", "java", "javascript", "js", "typescript", "ts", "tsx", "cpp", "c", "go", "rust", "rs", "swift", "css", "c#", "cs")
+
+// ── Syntax highlighter ────────────────────────────────────────────────────────
+private fun syntaxHighlight(lang: String, code: String): AnnotatedString {
+    if (code.length > MAX_HIGHLIGHT_LENGTH) return AnnotatedString(code)
+    val keywords = keywordsFor(lang)
+    val hashComment  = isHashComment(lang)
+    val slashComment = isSlashComment(lang)
+
+    return buildAnnotatedString {
+        var i = 0
+        val n = code.length
+        while (i < n) {
+            val ch = code[i]
+
+            // Block comment /* ... */
+            if (slashComment && i + 1 < n && ch == '/' && code[i + 1] == '*') {
+                val end = code.indexOf("*/", i + 2).let { if (it < 0) n else it + 2 }
+                withStyle(SpanStyle(color = HL_COMMENT)) { append(code, i, end) }
+                i = end; continue
+            }
+            // Line comment //
+            if (slashComment && i + 1 < n && ch == '/' && code[i + 1] == '/') {
+                val end = code.indexOf('\n', i).let { if (it < 0) n else it }
+                withStyle(SpanStyle(color = HL_COMMENT)) { append(code, i, end) }
+                i = end; continue
+            }
+            // Line comment #
+            if (hashComment && ch == '#') {
+                val end = code.indexOf('\n', i).let { if (it < 0) n else it }
+                withStyle(SpanStyle(color = HL_COMMENT)) { append(code, i, end) }
+                i = end; continue
+            }
+            // Annotation / decorator  @Xyz
+            if (ch == '@' && i + 1 < n && code[i + 1].isLetter()) {
+                var end = i + 1
+                while (end < n && (code[end].isLetterOrDigit() || code[end] == '_')) end++
+                withStyle(SpanStyle(color = HL_ANNOT)) { append(code, i, end) }
+                i = end; continue
+            }
+            // Triple-quoted string  """ ... """
+            if (i + 2 < n && ch == '"' && code[i + 1] == '"' && code[i + 2] == '"') {
+                val end = code.indexOf("\"\"\"", i + 3).let { if (it < 0) n else it + 3 }
+                withStyle(SpanStyle(color = HL_STRING)) { append(code, i, end) }
+                i = end; continue
+            }
+            // Double-quoted string
+            if (ch == '"') {
+                var end = i + 1
+                while (end < n && code[end] != '"' && code[end] != '\n') {
+                    if (code[end] == '\\') end++
+                    end++
+                }
+                if (end < n && code[end] == '"') end++
+                withStyle(SpanStyle(color = HL_STRING)) { append(code, i, end) }
+                i = end; continue
+            }
+            // Single-quoted string
+            if (ch == '\'') {
+                var end = i + 1
+                while (end < n && code[end] != '\'' && code[end] != '\n') {
+                    if (code[end] == '\\') end++
+                    end++
+                }
+                if (end < n && code[end] == '\'') end++
+                withStyle(SpanStyle(color = HL_STRING)) { append(code, i, end) }
+                i = end; continue
+            }
+            // Word: keyword, type (Capital), or plain identifier
+            if (ch.isLetter() || ch == '_') {
+                var end = i
+                while (end < n && (code[end].isLetterOrDigit() || code[end] == '_')) end++
+                val word = code.substring(i, end)
+                when {
+                    keywords != null && word in keywords ->
+                        withStyle(SpanStyle(color = HL_KEYWORD, fontWeight = FontWeight.SemiBold)) { append(word) }
+                    word.isNotEmpty() && word[0].isUpperCase() ->
+                        withStyle(SpanStyle(color = HL_TYPE)) { append(word) }
+                    else ->
+                        withStyle(SpanStyle(color = HL_DEFAULT)) { append(word) }
+                }
+                i = end; continue
+            }
+            // Number
+            if (ch.isDigit()) {
+                var end = i
+                while (end < n && (code[end].isDigit() || code[end] == '.' ||
+                            code[end] == 'L' || code[end] == 'f' || code[end] == 'x' ||
+                            code[end] in 'a'..'f' || code[end] in 'A'..'F')) end++
+                withStyle(SpanStyle(color = HL_NUMBER)) { append(code, i, end) }
+                i = end; continue
+            }
+            // Default
+            withStyle(SpanStyle(color = HL_DEFAULT)) { append(ch) }
+            i++
+        }
+    }
+}
+
+// ── Block model ───────────────────────────────────────────────────────────────
 private sealed class MdBlock {
     data class Heading(val level: Int, val content: String) : MdBlock()
-    data class Code(val lang: String, val code: String) : MdBlock()
+    data class Code(val lang: String, val code: String, val isOpen: Boolean = false) : MdBlock()
     data class Paragraph(val content: String) : MdBlock()
     data class BulletList(val items: List<String>) : MdBlock()
     data class NumberedList(val items: List<String>) : MdBlock()
@@ -36,6 +210,7 @@ private sealed class MdBlock {
     data object Divider : MdBlock()
 }
 
+// ── Parser ────────────────────────────────────────────────────────────────────
 private fun parseBlocks(markdown: String): List<MdBlock> {
     val input = if (markdown.length > MAX_PARSE_LENGTH)
         markdown.substring(0, MAX_PARSE_LENGTH) + "\n\n...(内容过长，已截断)..."
@@ -54,12 +229,13 @@ private fun parseBlocks(markdown: String): List<MdBlock> {
                 val lang = trimmed.removePrefix("```").trim()
                 val codeLines = mutableListOf<String>()
                 i++
-                while (i < lines.size && !lines[i].trim().startsWith("```")) {
+                var closed = false
+                while (i < lines.size) {
+                    if (lines[i].trim().startsWith("```")) { closed = true; i++; break }
                     codeLines.add(lines[i])
                     i++
                 }
-                blocks.add(MdBlock.Code(lang, codeLines.joinToString("\n")))
-                if (i < lines.size) i++
+                blocks.add(MdBlock.Code(lang, codeLines.joinToString("\n"), isOpen = !closed))
             }
 
             isHeading(trimmed) -> {
@@ -115,7 +291,8 @@ private fun parseBlocks(markdown: String): List<MdBlock> {
                 }
                 if (tableLines.size >= 2) {
                     val headerCells = tableLines[0].split("|").drop(1).dropLast(1).map { it.trim() }
-                    val startRow = if (tableLines.size >= 2 && tableLines[1].replace("|", "").replace("-", "").replace(":", "").isBlank()) 2 else 1
+                    val startRow = if (tableLines.size >= 2 &&
+                        tableLines[1].replace("|", "").replace("-", "").replace(":", "").isBlank()) 2 else 1
                     val dataRows = tableLines.drop(startRow).map { row ->
                         row.split("|").drop(1).dropLast(1).map { it.trim() }
                     }
@@ -184,6 +361,7 @@ private fun extractNumberedContent(line: String): String? {
     return line.substring(i + 2)
 }
 
+// ── Inline annotated string (bold, italic, inline-code, link) ─────────────────
 private fun buildInlineAnnotated(
     text: String,
     codeBackground: Color,
@@ -198,67 +376,49 @@ private fun buildInlineAnnotated(
                 val end = text.indexOf('`', pos + 1)
                 if (end != -1) {
                     withStyle(SpanStyle(fontFamily = FontFamily.Monospace, background = codeBackground, letterSpacing = 0.sp)) {
-                        append("\u2006")
-                        append(text, pos + 1, end)
-                        append("\u2006")
+                        append("\u2006"); append(text, pos + 1, end); append("\u2006")
                     }
                     pos = end + 1
                 } else { append(ch); pos++ }
             }
-
             ch == '*' && pos + 2 < len && text[pos + 1] == '*' && text[pos + 2] == '*' -> {
                 val end = text.indexOf("***", pos + 3)
                 if (end != -1) {
-                    withStyle(SpanStyle(fontWeight = FontWeight.Bold, fontStyle = FontStyle.Italic)) {
-                        append(text, pos + 3, end)
-                    }
+                    withStyle(SpanStyle(fontWeight = FontWeight.Bold, fontStyle = FontStyle.Italic)) { append(text, pos + 3, end) }
                     pos = end + 3
                 } else { append(ch); pos++ }
             }
-
             ch == '*' && pos + 1 < len && text[pos + 1] == '*' -> {
                 val end = text.indexOf("**", pos + 2)
                 if (end != -1) {
-                    withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
-                        append(text, pos + 2, end)
-                    }
+                    withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(text, pos + 2, end) }
                     pos = end + 2
                 } else { append(ch); pos++ }
             }
-
             ch == '*' -> {
                 val end = findSingleMarkerEnd(text, pos + 1, '*')
                 if (end != -1) {
-                    withStyle(SpanStyle(fontStyle = FontStyle.Italic)) {
-                        append(text, pos + 1, end)
-                    }
+                    withStyle(SpanStyle(fontStyle = FontStyle.Italic)) { append(text, pos + 1, end) }
                     pos = end + 1
                 } else { append(ch); pos++ }
             }
-
             ch == '~' && pos + 1 < len && text[pos + 1] == '~' -> {
                 val end = text.indexOf("~~", pos + 2)
                 if (end != -1) {
-                    withStyle(SpanStyle(textDecoration = TextDecoration.LineThrough)) {
-                        append(text, pos + 2, end)
-                    }
+                    withStyle(SpanStyle(textDecoration = TextDecoration.LineThrough)) { append(text, pos + 2, end) }
                     pos = end + 2
                 } else { append(ch); pos++ }
             }
-
             ch == '[' -> {
                 val cb = text.indexOf(']', pos + 1)
                 if (cb != -1 && cb + 1 < len && text[cb + 1] == '(') {
                     val cp = text.indexOf(')', cb + 2)
                     if (cp != -1) {
-                        withStyle(SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline)) {
-                            append(text, pos + 1, cb)
-                        }
+                        withStyle(SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline)) { append(text, pos + 1, cb) }
                         pos = cp + 1
                     } else { append(ch); pos++ }
                 } else { append(ch); pos++ }
             }
-
             else -> { append(ch); pos++ }
         }
     }
@@ -268,20 +428,112 @@ private fun findSingleMarkerEnd(text: String, start: Int, marker: Char): Int {
     var i = start
     val len = text.length
     while (i < len) {
-        if (text[i] == marker && (i + 1 >= len || text[i + 1] != marker) && i > start) {
-            return i
-        }
+        if (text[i] == marker && (i + 1 >= len || text[i + 1] != marker) && i > start) return i
         i++
     }
     return -1
 }
 
+// ── Blinking cursor ───────────────────────────────────────────────────────────
+@Composable
+private fun BlinkingCursor() {
+    val infiniteTransition = rememberInfiniteTransition(label = "cursor")
+    val alpha by infiniteTransition.animateFloat(
+        initialValue = 1f, targetValue = 0f,
+        animationSpec = infiniteRepeatable(tween(530, easing = LinearEasing), RepeatMode.Reverse),
+        label = "cursorAlpha"
+    )
+    Text(
+        text = "▋",
+        style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp),
+        color = HL_KEYWORD.copy(alpha = alpha)
+    )
+}
+
+// ── Syntax code block ─────────────────────────────────────────────────────────
+@Composable
+private fun SyntaxCodeBlock(
+    block: MdBlock.Code,
+    showCursor: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val clipboardManager = LocalClipboardManager.current
+    val highlighted = remember(block.lang, block.code) {
+        syntaxHighlight(block.lang, block.code)
+    }
+    val langLabel = block.lang.ifBlank { "code" }
+
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = CODE_BG,
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Column {
+            // ── Header bar ────────────────────────────────────────────────
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(CODE_HDR_BG)
+                    .padding(horizontal = 12.dp, vertical = 5.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = langLabel,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color(0xFF858585),
+                    fontFamily = FontFamily.Monospace
+                )
+                if (showCursor) {
+                    Text(
+                        text = "生成中…",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = HL_KEYWORD.copy(alpha = 0.8f)
+                    )
+                } else {
+                    IconButton(
+                        onClick = { clipboardManager.setText(AnnotatedString(block.code)) },
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(
+                            Icons.Outlined.ContentCopy, null,
+                            modifier = Modifier.size(13.dp),
+                            tint = Color(0xFF858585)
+                        )
+                    }
+                }
+            }
+            // ── Code body ──────────────────────────────────────────────────
+            Row(
+                modifier = Modifier
+                    .horizontalScroll(rememberScrollState())
+                    .padding(start = 14.dp, end = 14.dp, top = 10.dp, bottom = 12.dp),
+                verticalAlignment = Alignment.Bottom
+            ) {
+                Text(
+                    text = highlighted,
+                    style = TextStyle(
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 12.sp,
+                        lineHeight = 18.sp
+                    )
+                )
+                if (showCursor) {
+                    BlinkingCursor()
+                }
+            }
+        }
+    }
+}
+
+// ── Public composable ─────────────────────────────────────────────────────────
 @Composable
 fun MarkdownText(
     markdown: String,
     modifier: Modifier = Modifier,
     style: TextStyle = MaterialTheme.typography.bodyLarge,
-    color: Color = MaterialTheme.colorScheme.onSurface
+    color: Color = MaterialTheme.colorScheme.onSurface,
+    isStreaming: Boolean = false
 ) {
     val stableKey = remember(markdown) {
         if (markdown.length < 500) markdown
@@ -289,89 +541,47 @@ fun MarkdownText(
     }
 
     val blocks by produceState(initialValue = emptyList<MdBlock>(), key1 = stableKey) {
-        value = withContext(Dispatchers.Default) {
-            parseBlocks(markdown)
-        }
+        value = withContext(Dispatchers.Default) { parseBlocks(markdown) }
     }
+
     val codeBackground = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
-    val codeSurfaceColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
-    val linkColor = MaterialTheme.colorScheme.primary
+    val linkColor      = MaterialTheme.colorScheme.primary
     val clipboardManager = LocalClipboardManager.current
 
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
         if (blocks.isEmpty() && markdown.isNotBlank()) {
-            Text(
-                text = markdown.take(800),
-                style = style,
-                color = color.copy(alpha = 0.9f)
-            )
+            Text(text = markdown.take(800), style = style, color = color.copy(alpha = 0.9f))
             return@Column
         }
-        blocks.forEach { block ->
+
+        blocks.forEachIndexed { index, block ->
+            val isLastBlock = index == blocks.lastIndex
             when (block) {
                 is MdBlock.Heading -> {
                     val headingStyle = when (block.level) {
-                        1 -> style.copy(fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                        2 -> style.copy(fontSize = 19.sp, fontWeight = FontWeight.Bold)
-                        3 -> style.copy(fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+                        1    -> style.copy(fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                        2    -> style.copy(fontSize = 19.sp, fontWeight = FontWeight.Bold)
+                        3    -> style.copy(fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
                         else -> style.copy(fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                     }
                     Text(
                         text = buildInlineAnnotated(block.content, codeBackground, linkColor),
-                        style = headingStyle,
-                        color = color,
+                        style = headingStyle, color = color,
                         modifier = Modifier.padding(top = if (block.level <= 2) 4.dp else 2.dp)
                     )
                 }
 
                 is MdBlock.Code -> {
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = codeSurfaceColor,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column {
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = block.lang.ifBlank { "code" },
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = color.copy(alpha = 0.5f)
-                                )
-                                IconButton(
-                                    onClick = { clipboardManager.setText(AnnotatedString(block.code)) },
-                                    modifier = Modifier.size(24.dp)
-                                ) {
-                                    Icon(
-                                        Icons.Outlined.ContentCopy, null,
-                                        modifier = Modifier.size(13.dp),
-                                        tint = color.copy(alpha = 0.4f)
-                                    )
-                                }
-                            }
-                            Text(
-                                text = block.code,
-                                style = MaterialTheme.typography.bodySmall.copy(
-                                    fontFamily = FontFamily.Monospace,
-                                    lineHeight = 18.sp
-                                ),
-                                color = color.copy(alpha = 0.9f),
-                                modifier = Modifier
-                                    .horizontalScroll(rememberScrollState())
-                                    .padding(start = 12.dp, end = 12.dp, bottom = 10.dp)
-                            )
-                        }
-                    }
+                    SyntaxCodeBlock(
+                        block = block,
+                        showCursor = isStreaming && block.isOpen && isLastBlock
+                    )
                 }
 
                 is MdBlock.Paragraph -> {
                     Text(
                         text = buildInlineAnnotated(block.content, codeBackground, linkColor),
-                        style = style,
-                        color = color
+                        style = style, color = color
                     )
                 }
 
@@ -382,9 +592,7 @@ fun MarkdownText(
                                 Text("•", style = style, color = color, modifier = Modifier.padding(end = 8.dp))
                                 Text(
                                     text = buildInlineAnnotated(item, codeBackground, linkColor),
-                                    style = style,
-                                    color = color,
-                                    modifier = Modifier.weight(1f)
+                                    style = style, color = color, modifier = Modifier.weight(1f)
                                 )
                             }
                         }
@@ -395,17 +603,10 @@ fun MarkdownText(
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         block.items.forEachIndexed { idx, item ->
                             Row(modifier = Modifier.padding(start = 8.dp)) {
-                                Text(
-                                    "${idx + 1}.",
-                                    style = style,
-                                    color = color,
-                                    modifier = Modifier.padding(end = 8.dp)
-                                )
+                                Text("${idx + 1}.", style = style, color = color, modifier = Modifier.padding(end = 8.dp))
                                 Text(
                                     text = buildInlineAnnotated(item, codeBackground, linkColor),
-                                    style = style,
-                                    color = color,
-                                    modifier = Modifier.weight(1f)
+                                    style = style, color = color, modifier = Modifier.weight(1f)
                                 )
                             }
                         }
@@ -436,7 +637,7 @@ fun MarkdownText(
                 is MdBlock.Table -> {
                     Surface(
                         shape = RoundedCornerShape(8.dp),
-                        color = codeSurfaceColor,
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(modifier = Modifier.horizontalScroll(rememberScrollState()).padding(4.dp)) {

@@ -11,6 +11,7 @@ import com.orizon.openkiwi.core.agent.AgentEngine
 import com.orizon.openkiwi.core.agent.ProactiveMessageBus
 import com.orizon.openkiwi.core.clipboard.ClipboardQuickBus
 import com.orizon.openkiwi.core.widget.WidgetActionBus
+import com.orizon.openkiwi.core.canvas.CanvasActionBus
 import com.orizon.openkiwi.core.voice.VoiceWakeCommandBus
 import com.orizon.openkiwi.core.agent.THINKING_MARKER
 import com.orizon.openkiwi.core.gui.GuiAgent
@@ -26,8 +27,9 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
+import kotlinx.serialization.json.JsonObject
 
-data class ToolCallStatus(val name: String, val status: String)
+data class ToolCallStatus(val name: String, val status: String, val args: JsonObject? = null)
 
 data class ChatUiState(
     val messages: List<MessageUiModel> = emptyList(),
@@ -84,6 +86,11 @@ class ChatViewModel(
         }
         viewModelScope.launch {
             WidgetActionBus.prompts.collect { p ->
+                if (p.isNotBlank()) sendMessage(p)
+            }
+        }
+        viewModelScope.launch {
+            CanvasActionBus.prompts.collect { p ->
                 if (p.isNotBlank()) sendMessage(p)
             }
         }

@@ -28,10 +28,18 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.ui.platform.LocalContext
+import com.orizon.openkiwi.ui.chat.ToolDisplayRegistry
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonObject
+
+private val parseMessageJson = Json { ignoreUnknownKeys = true; isLenient = true }
 
 data class MessageUiModel(
     val id: Long = 0,
@@ -53,7 +61,8 @@ data class ArtifactUiModel(
 
 data class ToolAction(
     val toolName: String,
-    val status: String
+    val status: String,
+    val args: JsonObject? = null
 )
 
 @Composable
@@ -64,6 +73,7 @@ fun MessageBubble(
     onEditAsDraft: ((Long) -> Unit)? = null,
     onOpenArtifact: ((ArtifactUiModel) -> Unit)? = null,
     onShareArtifact: ((ArtifactUiModel) -> Unit)? = null,
+    onOpenCanvas: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val isUser = message.role == "USER"
@@ -125,8 +135,11 @@ fun MessageBubble(
                 }
 
                 parsed.toolActions.forEach { action ->
-                    ToolCallChip(action)
-                    Spacer(Modifier.height(3.dp))
+                    ToolCallCard(
+                        action = action,
+                        onOpenCanvas = onOpenCanvas
+                    )
+                    Spacer(Modifier.height(6.dp))
                 }
 
                 parsed.codeResults.forEach { result ->
@@ -144,6 +157,7 @@ fun MessageBubble(
                         markdown = parsed.textContent,
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurface,
+                        isStreaming = message.isStreaming,
                         modifier = Modifier.padding(vertical = 2.dp)
                     )
                 }
@@ -518,28 +532,94 @@ fun ThinkingSection(
 }
 
 @Composable
-fun ToolCallChip(action: ToolAction) {
+fun ToolCallCard(
+    action: ToolAction,
+    onOpenCanvas: (() -> Unit)? = null,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val summary = remember(action.toolName, action.args, action.status) {
+        ToolDisplayRegistry.resolve(context, action.toolName, action.args)
+    }
+    var expanded by remember(action.toolName, action.status) { mutableStateOf(false) }
     val isSuccess = action.status == "success"
     val isFailed = action.status == "failed"
     val isRunning = action.status == "running"
 
-    Row(
-        modifier = Modifier.padding(vertical = 3.dp),
-        verticalAlignment = Alignment.CenterVertically
+    Surface(
+        shape = RoundedCornerShape(10.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+        modifier = modifier.fillMaxWidth()
     ) {
-        when {
-            isRunning -> CircularProgressIndicator(modifier = Modifier.size(10.dp), strokeWidth = 1.5.dp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            isSuccess -> Icon(Icons.Default.Check, null, modifier = Modifier.size(10.dp), tint = PaperGreen)
-            isFailed -> Icon(Icons.Default.Close, null, modifier = Modifier.size(10.dp), tint = MaterialTheme.colorScheme.error)
-            else -> Icon(Icons.Default.Code, null, modifier = Modifier.size(10.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .then(
+                        if (action.args != null) {
+                            Modifier.clickable { expanded = !expanded }
+                        } else Modifier
+                    )
+            ) {
+                Text(
+                    summary.emoji,
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(end = 4.dp)
+                )
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        summary.title,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    summary.detailLine?.let { line ->
+                        Text(
+                            line,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = if (expanded) Int.MAX_VALUE else 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+                when {
+                    isRunning -> CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    isSuccess -> Icon(Icons.Default.Check, null, modifier = Modifier.size(16.dp), tint = PaperGreen)
+                    isFailed -> Icon(Icons.Default.Close, null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.error)
+                    else -> Icon(Icons.Default.Code, null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            if (expanded && action.args != null) {
+                Text(
+                    action.args.toString(),
+                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.9f),
+                    modifier = Modifier.padding(top = 6.dp)
+                )
+            }
+            if (action.toolName.equals("canvas", ignoreCase = true) && isSuccess && onOpenCanvas != null) {
+                Spacer(Modifier.height(6.dp))
+                FilledTonalButton(
+                    onClick = onOpenCanvas,
+                    modifier = Modifier.fillMaxWidth(),
+                    contentPadding = PaddingValues(vertical = 6.dp)
+                ) {
+                    Text("打开画布", style = MaterialTheme.typography.labelMedium)
+                }
+            }
         }
-        Spacer(Modifier.width(6.dp))
-        Text(
-            action.toolName,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
     }
+}
+
+/** @deprecated 使用 [ToolCallCard] */
+@Composable
+fun ToolCallChip(action: ToolAction) {
+    ToolCallCard(action = action, onOpenCanvas = null)
 }
 
 data class CodeResult(
@@ -772,16 +852,27 @@ fun parseMessageContent(content: String): ParsedMessage {
             }
             callingMatch != null -> {
                 val toolName = callingMatch.groupValues[1]
-                if (i + 1 < lines.size) {
-                    val nextLine = lines[i + 1].trim()
-                    val nextResult = Regex("""\[Tool result: (.+)]""").find(nextLine)
+                var nextIdx = i + 1
+                var argsJson: JsonObject? = null
+                if (nextIdx < lines.size) {
+                    val maybeArgs = lines[nextIdx].trim()
+                    if (maybeArgs.startsWith("{")) {
+                        argsJson = runCatching { parseMessageJson.parseToJsonElement(maybeArgs).jsonObject }.getOrNull()
+                        nextIdx++
+                    }
+                }
+                if (nextIdx < lines.size) {
+                    val resultLine = lines[nextIdx].trim()
+                    val nextResult = Regex("""\[Tool result: (.+)]""").find(resultLine)
                     if (nextResult != null) {
-                        toolActions.add(ToolAction(toolName, nextResult.groupValues[1]))
-                        i += 2
+                        toolActions.add(ToolAction(toolName, nextResult.groupValues[1], argsJson))
+                        i = nextIdx + 1
                         continue
                     }
                 }
-                toolActions.add(ToolAction(toolName, "running"))
+                toolActions.add(ToolAction(toolName, "running", argsJson))
+                i = nextIdx
+                continue
             }
             resultMatch != null -> {
                 if (toolActions.isNotEmpty() && toolActions.last().status == "running") {

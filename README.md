@@ -55,9 +55,8 @@ OpenKiwi 是运行在 **Android** 上的开源 AI Agent：不仅是聊天，还�
 
 ### 插件系统
 
-- **Plugin SDK**（`plugin-sdk/`）：标准化插件清单与接口
-- 动态加载外部插件 JAR/DEX
-- 插件管理页面，一键启停
+- **动态插件**：`core/plugin`（`DynamicPluginLoader`、`PluginManager`），按清单扫描并加载外部 **JAR/DEX**
+- 插件管理页面侧栏入口，一键启停（与根目录 `plugin-sdk/` **无关**；该名称常见于 OpenClaw 等其它仓库）
 
 ### 内置工具（30+）
 
@@ -161,6 +160,22 @@ OpenKiwi 是运行在 **Android** 上的开源 AI Agent：不仅是聊天，还�
 | Python 运行时 | Chaquopy（应用内） |
 | 架构 | MVVM、Repository、`AppContainer` 依赖组装 |
 
+**架构说明（一页）**：[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)（数据流、包职责、两种「技能」的区别、`AppContainer` 注释索引）。
+
+---
+
+## 仓库布局（根目录）
+
+| 路径 | 说明 |
+|------|------|
+| **`app/`** | OpenKiwi Android 应用，**唯一参与 Gradle 编译的产品代码**。 |
+| **`docs/`** | 文档（发布流程、**ARCHITECTURE** 等）。 |
+| **`companion-pc/`** | PC 伴侣（Python），可选组件。 |
+| **`openclaw-main/`** | （若克隆在本地）**OpenClaw 上游参考**，非子模块；不随 `app` 编译。 |
+| **`reference/`** | （若存在）其他大型参考源码，**只读**，不参与 APK。 |
+
+根目录 **不存在** 名为 `plugin-sdk/` 的 OpenKiwi 目录；动态插件见下文 `core/plugin`。
+
 ---
 
 ## 项目结构（摘要）
@@ -168,15 +183,16 @@ OpenKiwi 是运行在 **Android** 上的开源 AI Agent：不仅是聊天，还�
 ```
 app/src/main/java/com/orizon/openkiwi/
 ├── core/
-│   ├── agent/          # Agent 引擎 V2（规划/反思/子Agent）
-│   ├── tool/           # 工具注册与 30+ 内置工具 + 持久终端
+│   ├── agent/          # Agent 引擎（对话循环、工具调用、反思、主动消息等）
+│   ├── tool/           # 工具注册与大量内置工具 + 持久终端
 │   ├── gui/            # GUI Agent
 │   ├── llm/            # LLM Provider 抽象（OpenAI/Anthropic/Gemini）
 │   ├── mcp/            # MCP 协议客户端与工具桥接
+│   ├── openclaw/       # OpenClaw 集成（SKILL.md、可选 Gateway）
 │   ├── model/          # 模型与调度
-│   ├── plugin/         # 插件加载与管理
+│   ├── plugin/         # 动态插件加载与管理（JAR/DEX）
 │   ├── memory/         # 记忆
-│   ├── skill/          # 技能
+│   ├── skill/          # 工作流技能（Room 多步链，非 OpenClaw SKILL.md）
 │   ├── notification/   # 通知处理、自动回复
 │   ├── schedule/       # 定时任务
 │   ├── rag/            # 本地文件索引与检索工具
@@ -186,12 +202,11 @@ app/src/main/java/com/orizon/openkiwi/
 ├── data/               # Room、Repository、Preferences
 ├── network/            # API、Companion、飞书、API Router
 ├── service/            # 无障碍、通知监听、语音、悬浮窗等
-├── ui/                 # Compose 页面（纸质感杂志风主题）
+├── ui/                 # Compose 页面
 ├── widget/             # 桌面小组件
 └── di/                 # AppContainer
 
-companion-pc/           # Python + PyQt6 PC 伴侣
-plugin-sdk/             # 插件开发 SDK
+companion-pc/           # Python + PyQt6 PC 伴侣（独立目录）
 ```
 
 ---
